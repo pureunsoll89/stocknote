@@ -231,11 +231,11 @@ export default function Home() {
           {!positions.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569" }}><div style={{ fontSize: 14, marginBottom: 8 }}>아직 기록된 거래가 없습니다</div><button onClick={() => setView("add")} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>첫 거래 기록하기</button></div>}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {positions.map((p: any) => { const a = alertCfg[p.alertLevel]; return (
+            {[...positions].sort((a: any, b: any) => (b.avgPrice * b.totalQty) - (a.avgPrice * a.totalQty)).map((p: any) => { const a = alertCfg[p.alertLevel]; return (
               <div key={p.id} onClick={() => { setSelInst(p.id); setView("detail"); }} style={{ ...cs, padding: "16px 18px", cursor: "pointer", position: "relative" }}>
                 {p.noMemoCount > 0 && <div style={{ position: "absolute", top: 12, right: 14 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} /></div>}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}><span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span><span style={{ fontSize: 11, color: "#475569" }}>{p.totalQty}주 · {holdingDays(p.firstBuyDate)}일</span></div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span><span style={{ fontSize: 11, color: "#475569" }}>{p.totalQty}주 · {holdingDays(p.firstBuyDate)}일</span>{p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{p.firstMemo}</span>}</div>
                   <div style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, color: a.color, background: a.bg, border: `1px solid ${a.border}` }}>{a.label}</div>
                 </div>
                 <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
@@ -247,7 +247,6 @@ export default function Home() {
                   </div>
                   <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "#475569" }}><IconMemo /><span style={{ fontSize: 11 }}>{p.tradeCount}건</span></div>
                 </div>
-                {p.firstMemo && <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: "2px solid rgba(124,58,237,0.3)" }}><span style={{ fontSize: 12, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{p.firstMemo}</span></div>}
               </div>
             ); })}
           </div>
