@@ -54,6 +54,9 @@ export default function Home() {
   const [showNewInst, setShowNewInst] = useState(false);
   const [newInst, setNewInst] = useState({ symbol: "", name: "", market: "KOSPI" });
   const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -107,6 +110,39 @@ export default function Home() {
     }
     setCurrentPrices(prices);
     setPriceLoading(false);
+  }
+
+  async function searchStock(q: string) {
+    setSearchQuery(q);
+    if (q.length < 1) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/stock-search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+      setSearchResults(data);
+    } catch (e) { setSearchResults([]); }
+    setSearching(false);
+  }
+
+  async function selectStock(item: any) {
+    const existing = instruments.find(i => i.symbol === item.symbol);
+    if (existing) {
+      setForm(f => ({ ...f, instrument_id: existing.id }));
+      setShowNewInst(false);
+      setSearchQuery("");
+      setSearchResults([]);
+      return;
+    }
+    const { data } = await supabase.from("instruments").insert({
+      symbol: item.symbol, name: item.name, market: item.market,
+    }).select().single();
+    if (data) {
+      setInstruments(p => [...p, data]);
+      setForm(f => ({ ...f, instrument_id: data.id }));
+      setShowNewInst(false);
+      setSearchQuery("");
+      setSearchResults([]);
+    }
   }
 
   async function addInstrument() {
@@ -291,11 +327,20 @@ export default function Home() {
               {instruments.length > 0 ? <select value={form.instrument_id} onChange={(e: any) => setForm(f => ({ ...f, instrument_id: e.target.value }))} style={is}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name} ({i.symbol})</option>)}</select>
               : <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>등록된 종목이 없습니다</div>}
               <button onClick={() => setShowNewInst(!showNewInst)} style={{ marginTop: 8, padding: "6px 12px", borderRadius: 6, border: "1px dashed rgba(255,255,255,0.1)", background: "transparent", color: "#8b5cf6", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>{showNewInst ? "취소" : "+ 새 종목 추가"}</button>
-              {showNewInst && <div style={{ marginTop: 10, padding: 14, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: 8 }}>
-                <input placeholder="종목명 (예: LIG넥스원)" value={newInst.name} onChange={(e: any) => setNewInst(p => ({ ...p, name: e.target.value }))} style={is} />
-                <input placeholder="종목코드 (예: 079550)" value={newInst.symbol} onChange={(e: any) => setNewInst(p => ({ ...p, symbol: e.target.value }))} style={is} />
-                <select value={newInst.market} onChange={(e: any) => setNewInst(p => ({ ...p, market: e.target.value }))} style={is}><option value="KOSPI">KOSPI</option><option value="KOSDAQ">KOSDAQ</option><option value="NYSE">NYSE</option><option value="NASDAQ">NASDAQ</option></select>
-                <button onClick={addInstrument} style={{ padding: 8, borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>종목 등록</button>
+              {showNewInst && <div style={{ marginTop: 10, padding: 14, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <input placeholder="종목명 검색 (예: 삼성전자, LIG넥스원)" value={searchQuery} onChange={(e: any) => searchStock(e.target.value)} style={is} autoFocus />
+                {searching && <div style={{ fontSize: 12, color: "#64748b", padding: "8px 0" }}>검색 중...</div>}
+                {searchResults.length > 0 && <div style={{ marginTop: 8, maxHeight: 200, overflowY: "auto", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                  {searchResults.map((item: any, idx: number) => (
+                    <div key={idx} onClick={() => selectStock(item)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                      onMouseEnter={(e: any) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                      onMouseLeave={(e: any) => e.currentTarget.style.background = "transparent"}>
+                      <div><span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{item.name}</span><span style={{ fontSize: 12, color: "#64748b", marginLeft: 8 }}>{item.symbol}</span></div>
+                      <span style={{ fontSize: 11, color: "#8b5cf6", fontWeight: 600 }}>{item.market}</span>
+                    </div>
+                  ))}
+                </div>}
+                {searchQuery && !searching && searchResults.length === 0 && <div style={{ fontSize: 12, color: "#64748b", padding: "8px 0" }}>검색 결과 없음</div>}
               </div>}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
