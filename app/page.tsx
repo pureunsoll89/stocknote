@@ -46,6 +46,7 @@ export default function Home() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [priceLoading, setPriceLoading] = useState(false);
   const [view, setView] = useState("dashboard");
   const [selInst, setSelInst] = useState<string | null>(null);
   const [editTrade, setEditTrade] = useState<any>(null);
@@ -54,7 +55,22 @@ export default function Home() {
   const [newInst, setNewInst] = useState({ symbol: "", name: "", market: "KOSPI" });
   const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(() => {
+      if (instruments.length > 0) {
+        const prices: Record<string, number> = {};
+        Promise.all(instruments.map(async (inst) => {
+          try {
+            const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
+            const data = await res.json();
+            if (data.price) prices[inst.id] = data.price;
+          } catch (e) {}
+        })).then(() => setCurrentPrices(prices));
+      }
+    }, 300000); // 5분
+    return () => clearInterval(interval);
+  }, []);
 
   async function loadData() {
     setLoading(true);
@@ -76,6 +92,21 @@ export default function Home() {
       setCurrentPrices(prices);
     }
     setLoading(false);
+  }
+
+  async function refreshPrices() {
+    if (instruments.length === 0) return;
+    setPriceLoading(true);
+    const prices: Record<string, number> = {};
+    for (const inst of instruments) {
+      try {
+        const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
+        const data = await res.json();
+        if (data.price) prices[inst.id] = data.price;
+      } catch (e) {}
+    }
+    setCurrentPrices(prices);
+    setPriceLoading(false);
   }
 
   async function addInstrument() {
@@ -112,7 +143,15 @@ export default function Home() {
     return { ...inst, ...pos, currentPrice: cp, stockReturn: stockRet, benchReturn: br, relativeReturn: rr, alertLevel: getAlertLevel(rr), evalAmount: cp * pos.totalQty, unrealizedPnl: (cp - pos.avgPrice) * pos.totalQty, tradeCount: it.length, noMemoCount: noMemo, firstMemo: fm?.note || "" };
   }).filter(Boolean) as any[], [instruments, trades, currentPrices]);
 
-  const totals = useMemo(() => ({ totalInvested: positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0), totalTrades: trades.length, noMemo: trades.filter(t => !t.note?.trim()).length }), [positions, trades]);
+  const totals = useMemo(() => {
+    const totalInvested = positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
+    const totalEval = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
+    const totalUnrealized = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
+    const totalRealized = positions.reduce((s: number, p: any) => s + p.realizedPnl, 0);
+    const totalTrades = trades.length;
+    const noMemo = trades.filter(t => !t.note?.trim()).length;
+    return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo };
+  }, [positions, trades]);
   const instTrades = useMemo(() => selInst ? trades.filter(t => t.instrument_id === selInst).sort((a, b) => new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime()) : [], [trades, selInst]);
   const selPos = positions.find((p: any) => p.id === selInst);
   const selInstData = instruments.find(i => i.id === selInst);
@@ -143,11 +182,15 @@ export default function Home() {
           {totals.noMemo > 0 ? <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", display: "flex", alignItems: "center", gap: 10 }}><IconWarn /><span style={{ fontSize: 13, color: "#fbbf24" }}>이유 미기록 거래 <b>{totals.noMemo}건</b></span></div>
           : trades.length > 0 ? <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", display: "flex", alignItems: "center", gap: 10 }}><IconCheck /><span style={{ fontSize: 13, color: "#4ade80" }}>모든 거래에 이유가 기록됨</span></div> : null}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 24 }}>
-            <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>총 투자금</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totals.totalInvested)}원</div></div>
-            <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>보유종목</div><div style={{ fontSize: 20, fontWeight: 800 }}>{positions.length}종목</div></div>
-            <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>기록률</div><div style={{ fontSize: 20, fontWeight: 800, color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</div></div>
-          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 10 }}>
+              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>총 투자금</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totals.totalInvested)}원</div></div>
+              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가금액</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totals.totalEval)}원</div></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 24 }}>
+              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalUnrealized >= 0 ? "#34d399" : "#f87171" }}>{totals.totalUnrealized >= 0 ? "+" : ""}{fmt(totals.totalUnrealized)}원</div></div>
+              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>실현손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalRealized >= 0 ? "#34d399" : "#f87171" }}>{totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원</div></div>
+              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>기록률</div><div style={{ fontSize: 18, fontWeight: 800, color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</div></div>
+            </div>
 
           {!positions.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569" }}><div style={{ fontSize: 14, marginBottom: 8 }}>아직 기록된 거래가 없습니다</div><button onClick={() => setView("add")} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>첫 거래 기록하기</button></div>}
 
