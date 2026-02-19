@@ -223,8 +223,8 @@ export default function Home() {
               <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가금액</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totals.totalEval)}원</div></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 24 }}>
-              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalUnrealized >= 0 ? "#34d399" : "#f87171" }}>{totals.totalUnrealized >= 0 ? "+" : ""}{fmt(totals.totalUnrealized)}원</div></div>
-              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>실현손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalRealized >= 0 ? "#34d399" : "#f87171" }}>{totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원</div></div>
+            <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalUnrealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalUnrealized >= 0 ? "+" : ""}{fmt(totals.totalUnrealized)}원</div></div>
+              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>실현손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalRealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원</div></div>
               <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>기록률</div><div style={{ fontSize: 18, fontWeight: 800, color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</div></div>
             </div>
 
@@ -239,11 +239,11 @@ export default function Home() {
                   <div style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, color: a.color, background: a.bg, border: `1px solid ${a.border}` }}>{a.label}</div>
                 </div>
                 <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 13, color: "#94a3b8" }}>{fmt(p.avgPrice * p.totalQty)}원</span>
                     <span style={{ fontSize: 11, color: "#475569" }}>→</span>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: p.currentPrice > 0 ? (p.unrealizedPnl >= 0 ? "#34d399" : "#f87171") : "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : "현재가 없음"}</span>
-                    {p.currentPrice > 0 && <span style={{ fontSize: 13, fontWeight: 800, color: p.stockReturn >= 0 ? "#34d399" : "#f87171" }}>{(p.stockReturn >= 0 ? "+" : "") + (p.stockReturn * 100).toFixed(2)}%</span>}
+                    <span style={{ fontSize: 13, fontWeight: 700, color: p.currentPrice > 0 ? (p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6") : "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : "현재가 없음"}</span>
+                    {p.currentPrice > 0 && <span style={{ fontSize: 13, fontWeight: 800, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6" }}>{(p.unrealizedPnl >= 0 ? "+" : "")}{fmt(p.unrealizedPnl)}원 ({(p.stockReturn >= 0 ? "+" : "") + (p.stockReturn * 100).toFixed(2)}%)</span>}
                   </div>
                   <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "#475569" }}><IconMemo /><span style={{ fontSize: 11 }}>{p.tradeCount}건</span></div>
                 </div>
