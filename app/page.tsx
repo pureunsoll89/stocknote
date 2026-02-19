@@ -79,16 +79,16 @@ export default function Home() {
     setInstruments(i || []); setTrades(t || []);
     if (i && i.length > 0) setForm(f => ({ ...f, instrument_id: f.instrument_id || i[0].id }));
     
-    // 현재가 조회
+// 현재가 조회 (병렬)
     if (i && i.length > 0) {
       const prices: Record<string, number> = {};
-      for (const inst of i) {
+      await Promise.all(i.map(async (inst) => {
         try {
           const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
           const data = await res.json();
           if (data.price) prices[inst.id] = data.price;
         } catch (e) {}
-      }
+      }));
       setCurrentPrices(prices);
     }
     setLoading(false);
