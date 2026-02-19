@@ -239,8 +239,12 @@ export default function Home() {
                   <div style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, color: a.color, background: a.bg, border: `1px solid ${a.border}` }}>{a.label}</div>
                 </div>
                 <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
-                  <div><span style={{ fontSize: 11, color: "#475569" }}>평단 </span><span style={{ fontSize: 13, fontWeight: 700 }}>{fmt(p.avgPrice)}원</span>{p.currentPrice > 0 && <><span style={{ fontSize: 11, color: "#475569", margin: "0 4px" }}>→</span><span style={{ fontSize: 13, fontWeight: 700 }}>{fmt(p.currentPrice)}원</span></>}</div>
-                  {p.currentPrice > 0 && <span style={{ fontSize: 15, fontWeight: 800, color: p.stockReturn >= 0 ? "#34d399" : "#f87171" }}>{(p.stockReturn >= 0 ? "+" : "") + (p.stockReturn * 100).toFixed(2)}%</span>}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 13, color: "#94a3b8" }}>{fmt(p.avgPrice * p.totalQty)}원</span>
+                    <span style={{ fontSize: 11, color: "#475569" }}>→</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: p.currentPrice > 0 ? (p.unrealizedPnl >= 0 ? "#34d399" : "#f87171") : "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : "현재가 없음"}</span>
+                    {p.currentPrice > 0 && <span style={{ fontSize: 13, fontWeight: 800, color: p.stockReturn >= 0 ? "#34d399" : "#f87171" }}>{(p.stockReturn >= 0 ? "+" : "") + (p.stockReturn * 100).toFixed(2)}%</span>}
+                  </div>
                   <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "#475569" }}><IconMemo /><span style={{ fontSize: 11 }}>{p.tradeCount}건</span></div>
                 </div>
                 {p.firstMemo && <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: "2px solid rgba(124,58,237,0.3)" }}><span style={{ fontSize: 12, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>{p.firstMemo}</span></div>}
