@@ -18,7 +18,9 @@ export async function GET(request: Request) {
     const changeRate = parseFloat(data?.fluctuationsRatio || "0");
     const name = data?.stockName || "";
 
-    return NextResponse.json({ symbol, name, price, change, changeRate });
+    const prevPrice = price - change;
+    const dayChangeRate = prevPrice > 0 ? ((change / prevPrice) * 100) : 0;
+    return NextResponse.json({ symbol, name, price, change, changeRate: dayChangeRate });
   } catch (e: any) {
     return NextResponse.json({ error: "조회 실패", detail: e.message }, { status: 500 });
   }

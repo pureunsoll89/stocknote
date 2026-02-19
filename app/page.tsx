@@ -57,6 +57,8 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [marketIndex, setMarketIndex] = useState<Record<string, { changeRate: number }>>({});
+  const [dayChanges, setDayChanges] = useState<Record<string, number>>({});
 
   useEffect(() => {
     loadData();
@@ -76,6 +78,12 @@ export default function Home() {
   }, []);
 
   async function loadData() {
+    // 지수 조회
+    try {
+      const mRes = await fetch("/api/market-index");
+      const mData = await mRes.json();
+      setMarketIndex(mData);
+    } catch (e) {}
     setLoading(true);
     const { data: i } = await supabase.from("instruments").select("*");
     const { data: t } = await supabase.from("trades").select("*");
@@ -85,14 +93,17 @@ export default function Home() {
 // 현재가 조회 (병렬)
     if (i && i.length > 0) {
       const prices: Record<string, number> = {};
+      const changes: Record<string, number> = {};
       await Promise.all(i.map(async (inst) => {
         try {
           const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
           const data = await res.json();
           if (data.price) prices[inst.id] = data.price;
+          if (data.changeRate !== undefined) changes[inst.id] = data.changeRate;
         } catch (e) {}
       }));
       setCurrentPrices(prices);
+      setDayChanges(changes);
     }
     setLoading(false);
   }
@@ -236,7 +247,11 @@ export default function Home() {
                 {p.noMemoCount > 0 && <div style={{ position: "absolute", top: 12, right: 14 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} /></div>}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span><span style={{ fontSize: 11, color: "#475569" }}>{p.totalQty}주 · {holdingDays(p.firstBuyDate)}일</span>{p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{p.firstMemo}</span>}</div>
-                  <div style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 700, color: a.color, background: a.bg, border: `1px solid ${a.border}` }}>{a.label}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원 ({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%)</span>
+                        <span style={{ fontSize: 11, color: "#475569" }}>|</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</span>
+                      </div>
                 </div>
                 <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
