@@ -79,7 +79,7 @@ useEffect(() => {
   }, []);
 
   async function signInGoogle() {
-    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://stocknote-mu.vercel.app" } });
   }
 
   async function signInEmail() {
