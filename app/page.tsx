@@ -59,23 +59,44 @@ export default function Home() {
   const [searching, setSearching] = useState(false);
   const [marketIndex, setMarketIndex] = useState<Record<string, { changeRate: number }>>({});
   const [dayChanges, setDayChanges] = useState<Record<string, number>>({});
+  const [user, setUser] = useState<any>(null);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPw, setAuthPw] = useState("");
+  const [authError, setAuthError] = useState("");
 
-  useEffect(() => {
-    loadData();
-    const interval = setInterval(() => {
-      if (instruments.length > 0) {
-        const prices: Record<string, number> = {};
-        Promise.all(instruments.map(async (inst) => {
-          try {
-            const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
-            const data = await res.json();
-            if (data.price) prices[inst.id] = data.price;
-          } catch (e) {}
-        })).then(() => setCurrentPrices(prices));
-      }
-    }, 300000); // 5분
-    return () => clearInterval(interval);
+useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null);
+      if (session?.user) loadData();
+      else setLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+      if (session?.user) loadData();
+    });
+    return () => subscription.unsubscribe();
   }, []);
+
+  async function signInGoogle() {
+    await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
+  }
+
+  async function signInEmail() {
+    setAuthError("");
+    const { error } = authMode === "login"
+      ? await supabase.auth.signInWithPassword({ email: authEmail, password: authPw })
+      : await supabase.auth.signUp({ email: authEmail, password: authPw });
+    if (error) setAuthError(error.message);
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    setUser(null);
+    setInstruments([]);
+    setTrades([]);
+    setCurrentPrices({});
+  }
 
   async function loadData() {
     // 지수 조회
@@ -85,8 +106,8 @@ export default function Home() {
       setMarketIndex(mData);
     } catch (e) {}
     setLoading(true);
-    const { data: i } = await supabase.from("instruments").select("*");
-    const { data: t } = await supabase.from("trades").select("*");
+    const { data: i } = await supabase.from("instruments").select("*").eq("user_id", user?.id);
+    const { data: t } = await supabase.from("trades").select("*").eq("user_id", user?.id);
     setInstruments(i || []); setTrades(t || []);
     if (i && i.length > 0) setForm(f => ({ ...f, instrument_id: f.instrument_id || i[0].id }));
     
@@ -145,7 +166,7 @@ export default function Home() {
       return;
     }
     const { data } = await supabase.from("instruments").insert({
-      symbol: item.symbol, name: item.name, market: item.market,
+      symbol: item.symbol, name: item.name, market: item.market, user_id: user.id,
     }).select().single();
     if (data) {
       setInstruments(p => [...p, data]);
@@ -158,13 +179,13 @@ export default function Home() {
 
   async function addInstrument() {
     if (!newInst.name || !newInst.symbol) return;
-    const { data } = await supabase.from("instruments").insert({ symbol: newInst.symbol, name: newInst.name, market: newInst.market }).select().single();
+    const { data } = await supabase.from("instruments").insert({ symbol: item.symbol, name: item.name, market: item.market, user_id: user.id }).select().single();
     if (data) { setInstruments(p => [...p, data]); setForm(f => ({ ...f, instrument_id: data.id })); setNewInst({ symbol: "", name: "", market: "KOSPI" }); setShowNewInst(false); }
   }
 
   async function addTrade() {
     if (!form.quantity || !form.price || !form.instrument_id) return;
-    const { data } = await supabase.from("trades").insert({ instrument_id: form.instrument_id, trade_date: form.trade_date, side: form.side, quantity: parseInt(form.quantity), price: parseInt(form.price), note: form.note.trim() }).select().single();
+    const { data } = await supabase.from("trades").insert({ instrument_id: form.instrument_id, trade_date: form.trade_date, side: form.side, quantity: parseInt(form.quantity), price: parseInt(form.price), note: form.note.trim(), user_id: user.id }).select().single();
     if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "", note: "" })); setView("dashboard"); }
   }
 
@@ -204,6 +225,37 @@ export default function Home() {
   const selInstData = instruments.find(i => i.id === selInst);
 
   if (loading) return <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>로딩 중...</div>;
+if (!user) return (
+    <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
+      <div style={{ width: 360, padding: 32, borderRadius: 16, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "#fff" }}>N</div>
+          <span style={{ fontSize: 22, fontWeight: 800, color: "#f8fafc" }}>투자노트</span>
+        </div>
+        <button onClick={signInGoogle} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#e2e8f0", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Google로 시작하기
+        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
+          <span style={{ fontSize: 12, color: "#64748b" }}>또는</span>
+          <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
+        </div>
+        <input type="email" placeholder="이메일" value={authEmail} onChange={(e: any) => setAuthEmail(e.target.value)} style={{ ...is, marginBottom: 10 }} />
+        <input type="password" placeholder="비밀번호" value={authPw} onChange={(e: any) => setAuthPw(e.target.value)} style={{ ...is, marginBottom: 10 }} onKeyDown={(e: any) => e.key === "Enter" && signInEmail()} />
+        {authError && <div style={{ fontSize: 12, color: "#f87171", marginBottom: 10 }}>{authError}</div>}
+        <button onClick={signInEmail} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
+          {authMode === "login" ? "로그인" : "회원가입"}
+        </button>
+        <div style={{ textAlign: "center", fontSize: 13, color: "#64748b" }}>
+          {authMode === "login" ? "계정이 없나요? " : "이미 계정이 있나요? "}
+          <span onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")} style={{ color: "#8b5cf6", cursor: "pointer", fontWeight: 600 }}>
+            {authMode === "login" ? "회원가입" : "로그인"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
@@ -221,6 +273,7 @@ export default function Home() {
             ))}
           </div>
         )}
+        <button onClick={signOut} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", marginLeft: 8 }}>로그아웃</button>
       </header>
 
       <main style={{ maxWidth: 880, margin: "0 auto", padding: "24px 16px 60px" }}>
