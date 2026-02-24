@@ -316,6 +316,21 @@ if (!user) return (
                         <span style={{ fontSize: 11, fontWeight: 600, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</span>
                       </div>
                 </div>
+                {editingMemo === p.id ? (
+                  <div style={{ marginBottom: 8, display: "flex", gap: 6 }} onClick={(e: any) => e.stopPropagation()}>
+                    <input value={memoText} onChange={(e: any) => setMemoText(e.target.value)} placeholder="종목 메모 입력..." style={{ ...is, flex: 1, fontSize: 12, padding: "6px 10px" }} autoFocus onKeyDown={(e: any) => e.key === "Enter" && saveInstMemo(p.id)} />
+                    <button onClick={(e: any) => { e.stopPropagation(); saveInstMemo(p.id); }} style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                    <button onClick={(e: any) => { e.stopPropagation(); setEditingMemo(null); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: 8, cursor: "pointer" }} onClick={(e: any) => { e.stopPropagation(); setEditingMemo(p.id); setMemoText(p.memo || ""); }}>
+                    {p.memo ? (
+                      <span style={{ fontSize: 12, color: "#8b9dc3", fontStyle: "italic" }}>{p.memo}</span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: "#475569" }}>+ 메모 추가</span>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 13, color: "#94a3b8" }}>{fmt(p.avgPrice * p.totalQty)}원</span>
@@ -325,21 +340,6 @@ if (!user) return (
                   </div>
                   <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "#475569" }}><IconMemo /><span style={{ fontSize: 11 }}>{p.tradeCount}건</span></div>
                 </div>
-                {editingMemo === p.id ? (
-                  <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-                    <input value={memoText} onChange={(e: any) => setMemoText(e.target.value)} placeholder="종목 메모 입력..." style={{ ...is, flex: 1, fontSize: 12, padding: "6px 10px" }} autoFocus onKeyDown={(e: any) => e.key === "Enter" && saveInstMemo(p.id)} onClick={(e: any) => e.stopPropagation()} />
-                    <button onClick={(e: any) => { e.stopPropagation(); saveInstMemo(p.id); }} style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
-                    <button onClick={(e: any) => { e.stopPropagation(); setEditingMemo(null); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
-                  </div>
-                ) : (
-                  <div style={{ marginTop: 8, cursor: "pointer" }} onClick={(e: any) => { e.stopPropagation(); setEditingMemo(p.id); setMemoText(p.memo || ""); }}>
-                    {p.memo ? (
-                      <span style={{ fontSize: 12, color: "#8b9dc3", fontStyle: "italic" }}>{p.memo}</span>
-                    ) : (
-                      <span style={{ fontSize: 11, color: "#475569" }}>+ 메모 추가</span>
-                    )}
-                  </div>
-                )}
               </div>
             ); })}
           </div>
