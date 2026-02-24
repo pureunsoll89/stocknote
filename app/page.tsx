@@ -179,7 +179,7 @@ useEffect(() => {
 
   async function addInstrument() {
     if (!newInst.name || !newInst.symbol) return;
-    const { data } = await supabase.from("instruments").insert({ symbol: item.symbol, name: item.name, market: item.market, user_id: user.id }).select().single();
+    const { data } = await supabase.from("instruments").insert({ symbol: newInst.symbol, name: newInst.name, market: newInst.market, user_id: user.id }).select().single();
     if (data) { setInstruments(p => [...p, data]); setForm(f => ({ ...f, instrument_id: data.id })); setNewInst({ symbol: "", name: "", market: "KOSPI" }); setShowNewInst(false); }
   }
 
