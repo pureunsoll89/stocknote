@@ -321,7 +321,7 @@ if (!user) return (
                         )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원 ({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%)</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원 ({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%)</span>
                         <span style={{ fontSize: 11, color: "#475569" }}>|</span>
                         <span style={{ fontSize: 11, fontWeight: 600, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</span>
                       </div>
