@@ -235,7 +235,7 @@ useEffect(() => {
   const selPos = positions.find((p: any) => p.id === selInst);
   const selInstData = instruments.find(i => i.id === selInst);
 
-  if (loading) return <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>로딩 중...</div>;
+  if (loading) return <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", gap: 16 }}><div style={{ fontSize: 36 }}>📊</div><div style={{ fontSize: 18, fontWeight: 700 }}>투자노트</div><div style={{ fontSize: 13, color: "#64748b" }}>손실을 줄이는 투자 습관</div></div>;
 if (!user) return (
     <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
       <div style={{ width: 360, padding: 32, borderRadius: 16, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
