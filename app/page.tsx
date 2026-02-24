@@ -309,8 +309,18 @@ if (!user) return (
               <div key={p.id} onClick={() => { setSelInst(p.id); setView("detail"); }} style={{ ...cs, padding: "16px 18px", cursor: "pointer", position: "relative" }}>
                 {p.noMemoCount > 0 && <div style={{ position: "absolute", top: 12, right: 14 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} /></div>}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}><span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span><span style={{ fontSize: 11, color: "#475569" }}>{p.totalQty}주 · {holdingDays(p.firstBuyDate)}일</span>{p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{p.firstMemo}</span>}</div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flex: "0 0 auto" }}><span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span><span style={{ fontSize: 11, color: "#475569" }}>{p.totalQty}주 · {holdingDays(p.firstBuyDate)}일</span>{p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{p.firstMemo}</span>}</div>
+                      <div style={{ flex: 1, textAlign: "center", minWidth: 60 }} onClick={(e: any) => { e.stopPropagation(); setEditingMemo(p.id); setMemoText(p.memo || ""); }}>
+                        {editingMemo === p.id ? (
+                          <div style={{ display: "flex", gap: 4, justifyContent: "center" }} onClick={(e: any) => e.stopPropagation()}>
+                            <input value={memoText} onChange={(e: any) => setMemoText(e.target.value)} placeholder="메모 입력..." style={{ ...is, width: 120, fontSize: 11, padding: "4px 8px" }} autoFocus onKeyDown={(e: any) => { if (e.key === "Enter") saveInstMemo(p.id); if (e.key === "Escape") setEditingMemo(null); }} />
+                            <button onClick={(e: any) => { e.stopPropagation(); saveInstMemo(p.id); }} style={{ padding: "4px 8px", borderRadius: 4, border: "none", background: "#7c3aed", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>✓</button>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 11, color: p.memo ? "#8b9dc3" : "#475569", fontStyle: p.memo ? "italic" : "normal", cursor: "pointer" }}>{p.memo || "+ 메모"}</span>
+                        )}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원 ({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%)</span>
                         <span style={{ fontSize: 11, color: "#475569" }}>|</span>
                         <span style={{ fontSize: 11, fontWeight: 600, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</span>
