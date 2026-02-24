@@ -321,7 +321,7 @@ if (!user) return (
                         )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원 ({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%)</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원 ({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%)</span>
                         <span style={{ fontSize: 11, color: "#475569" }}>|</span>
                         <span style={{ fontSize: 11, fontWeight: 600, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</span>
                       </div>
@@ -333,7 +333,7 @@ if (!user) return (
                     <span style={{ fontSize: 13, fontWeight: 700, color: p.currentPrice > 0 ? (p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6") : "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : "현재가 없음"}</span>
                     {p.currentPrice > 0 && <span style={{ fontSize: 13, fontWeight: 800, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6" }}>{(p.unrealizedPnl >= 0 ? "+" : "")}{fmt(p.unrealizedPnl)}원 ({(p.stockReturn >= 0 ? "+" : "") + (p.stockReturn * 100).toFixed(2)}%)</span>}
                   </div>
-                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "#475569" }}><IconMemo /><span style={{ fontSize: 11 }}>{p.tradeCount}건</span></div>
+                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, color: "#475569" }}><IconMemo /><span style={{ fontSize: 11, color: "#ef4444" }}>매수 {trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</span><span style={{ fontSize: 11, color: "#3b82f6" }}>매도 {trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</span></div>
                 </div>
               </div>
             ); })}
@@ -355,7 +355,7 @@ if (!user) return (
             <div style={{ position: "absolute", left: 7, top: 8, bottom: 8, width: 2, background: "rgba(255,255,255,0.06)" }} />
             {instTrades.map((t, i) => { const hm = !!t.note?.trim(); return (
               <div key={t.id} style={{ position: "relative", marginBottom: i < instTrades.length - 1 ? 14 : 0, paddingLeft: 16 }}>
-                <div style={{ position: "absolute", left: -16, top: 6, width: 12, height: 12, borderRadius: "50%", background: t.side === "BUY" ? "#1d4ed8" : "#b91c1c", border: "2px solid #080c14" }} />
+                <div style={{ position: "absolute", left: -16, top: 6, width: 12, height: 12, borderRadius: "50%", background: t.side === "BUY" ? "#ef4444" : "#3b82f6", border: "2px solid #080c14" }} />
                 <div style={{ ...cs, padding: "14px 18px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: hm ? 10 : 0 }}>
                     <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(59,130,246,0.15)" : "rgba(239,68,68,0.15)", color: t.side === "BUY" ? "#60a5fa" : "#fca5a5" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
@@ -437,7 +437,7 @@ if (!user) return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div><label style={ls}>날짜</label><input type="date" value={form.trade_date} onChange={(e: any) => setForm(f => ({ ...f, trade_date: e.target.value }))} style={is} /></div>
               <div><label style={ls}>구분</label><div style={{ display: "flex", gap: 6 }}>
-                {(["BUY", "SELL"] as const).map(s => <button key={s} onClick={() => setForm(f => ({ ...f, side: s }))} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "2px solid", cursor: "pointer", fontSize: 13, fontWeight: 700, background: form.side === s ? (s === "BUY" ? "rgba(59,130,246,0.12)" : "rgba(239,68,68,0.12)") : "rgba(255,255,255,0.02)", borderColor: form.side === s ? (s === "BUY" ? "#3b82f6" : "#ef4444") : "rgba(255,255,255,0.08)", color: form.side === s ? (s === "BUY" ? "#60a5fa" : "#fca5a5") : "#64748b" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
+              {["BUY","SELL"].map(s => <button key={s} onClick={() => setForm(f => ({...f, side: s}))} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.06)", background: form.side === s ? (s === "BUY" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent", color: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
               </div></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
