@@ -11,7 +11,7 @@ export async function GET() {
     return NextResponse.json({
       KOSPI: { price: kospi?.closePrice, change: kospi?.compareToPreviousClosePrice, changeRate: parseFloat(kospi?.fluctuationsRatio || "0") },
       KOSDAQ: { price: kosdaq?.closePrice, change: kosdaq?.compareToPreviousClosePrice, changeRate: parseFloat(kosdaq?.fluctuationsRatio || "0") },
-    });
+    }, { headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=120" } });
   } catch (e) {
     return NextResponse.json({ KOSPI: { changeRate: 0 }, KOSDAQ: { changeRate: 0 } });
   }
