@@ -72,6 +72,7 @@ useEffect(() => {
       setUser(session?.user || null);
       if (session?.user) loadData();
       else setLoading(false);
+      if (window.location.hash) window.history.replaceState(null, "", window.location.pathname);
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
