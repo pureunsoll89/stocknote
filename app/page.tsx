@@ -8,7 +8,7 @@ const supabase = createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtdmN0amNjaWVlcHpqamVvZnBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNDU1NTEsImV4cCI6MjA4NjkyMTU1MX0.-iPj_DOhvUd9JIdbmaE-iEg0ZAusjSprQsv2K0vNw1w"
 );
 
-interface Instrument { id: string; symbol: string; name: string; market: string; }
+interface Instrument { id: string; symbol: string; name: string; market: string; memo?: string; }
 interface Trade { id: string; instrument_id: string; trade_date: string; side: string; quantity: number; price: number; fee: number; note: string; }
 
 function calculatePosition(trades: Trade[]) {
@@ -64,6 +64,8 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPw, setAuthPw] = useState("");
   const [authError, setAuthError] = useState("");
+  const [editingMemo, setEditingMemo] = useState<string | null>(null);
+  const [memoText, setMemoText] = useState("");
 
 useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -96,6 +98,12 @@ useEffect(() => {
     setInstruments([]);
     setTrades([]);
     setCurrentPrices({});
+  }
+
+  async function saveInstMemo(instId: string) {
+    await supabase.from("instruments").update({ memo: memoText }).eq("id", instId);
+    setInstruments(p => p.map(i => i.id === instId ? { ...i, memo: memoText } : i));
+    setEditingMemo(null);
   }
 
   async function loadData() {
@@ -188,7 +196,7 @@ useEffect(() => {
   async function addTrade() {
     if (!form.quantity || !form.price || !form.instrument_id) return;
     const { data } = await supabase.from("trades").insert({ instrument_id: form.instrument_id, trade_date: form.trade_date, side: form.side, quantity: parseInt(form.quantity), price: parseInt(form.price), note: form.note.trim(), user_id: user.id }).select().single();
-    if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "", note: "" })); setView("dashboard"); }
+    if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "", note: "" })); setView("dashboard"); loadData(); }
   }
 
   async function saveEdit() {
@@ -317,6 +325,21 @@ if (!user) return (
                   </div>
                   <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 4, color: "#475569" }}><IconMemo /><span style={{ fontSize: 11 }}>{p.tradeCount}건</span></div>
                 </div>
+                {editingMemo === p.id ? (
+                  <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                    <input value={memoText} onChange={(e: any) => setMemoText(e.target.value)} placeholder="종목 메모 입력..." style={{ ...is, flex: 1, fontSize: 12, padding: "6px 10px" }} autoFocus onKeyDown={(e: any) => e.key === "Enter" && saveInstMemo(p.id)} onClick={(e: any) => e.stopPropagation()} />
+                    <button onClick={(e: any) => { e.stopPropagation(); saveInstMemo(p.id); }} style={{ padding: "6px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                    <button onClick={(e: any) => { e.stopPropagation(); setEditingMemo(null); }} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, cursor: "pointer" }} onClick={(e: any) => { e.stopPropagation(); setEditingMemo(p.id); setMemoText(p.memo || ""); }}>
+                    {p.memo ? (
+                      <span style={{ fontSize: 12, color: "#8b9dc3", fontStyle: "italic" }}>{p.memo}</span>
+                    ) : (
+                      <span style={{ fontSize: 11, color: "#475569" }}>+ 메모 추가</span>
+                    )}
+                  </div>
+                )}
               </div>
             ); })}
           </div>
