@@ -122,9 +122,6 @@ useEffect(() => {
     if (i && i.length > 0) setForm(f => ({ ...f, instrument_id: f.instrument_id || i[0].id }));
     setLoading(false);
 
-    // 현재가 조회 (백그라운드)
-    if (i && i.length > 0) {
-    
 // 현재가 조회 (병렬)
     if (i && i.length > 0) {
       const prices: Record<string, number> = {};
@@ -140,7 +137,6 @@ useEffect(() => {
       setCurrentPrices(prices);
       setDayChanges(changes);
     }
-    setLoading(false);
   }
 
   async function refreshPrices() {
