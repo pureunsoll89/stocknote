@@ -339,13 +339,9 @@ if (!user) return (
                       </div>
                 </div>
                 <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
-                <div style={{ fontSize: 13 }}>
-                    <span style={{ color: "#94a3b8" }}>{fmt(p.avgPrice * p.totalQty)}원</span>
-                    <span style={{ color: "#475569", margin: "0 6px" }}>→</span>
-                    <span style={{ fontWeight: 700, color: p.currentPrice > 0 ? (p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6") : "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : "현재가 없음"}</span>
-                </div>
-                {p.currentPrice > 0 && <div style={{ fontSize: 13, fontWeight: 800, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6" }}>{(p.unrealizedPnl >= 0 ? "+" : "")}{fmt(p.unrealizedPnl)}원 ({(p.stockReturn >= 0 ? "+" : "") + (p.stockReturn * 100).toFixed(2)}%)</div>}
-                  <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}><span style={{ fontSize: 11, color: "#b97070" }}>매수 {trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</span><span style={{ fontSize: 11, color: "#7090b9" }}>매도 {trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</span></div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : fmt(p.avgPrice * p.totalQty) + "원"}</div>
+                {p.currentPrice > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6" }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원  {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 11, color: "#b97070" }}>매수 {trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</span><span style={{ fontSize: 11, color: "#7090b9" }}>매도 {trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</span></div>
                 </div>
               </div>
             ); })}
