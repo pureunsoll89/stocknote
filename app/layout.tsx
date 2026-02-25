@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: '투자노트',
+  title: '주식노트',
 description: '매매 기록과 투자 성과를 추적하는 투자 일지',
   openGraph: {
     images: [
