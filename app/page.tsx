@@ -27,20 +27,15 @@ function calculatePosition(trades: Trade[]) {
 }
 
 function holdingDays(d: string) { return d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0; }
+function holdingWeeks(d: string) { const days = holdingDays(d); return `${Math.floor(days / 7)}주 · ${days % 7}일`; }
 function getAlertLevel(r: number) { return r >= 0.05 ? "OUTPERFORM" : r >= -0.05 ? "NORMAL" : r >= -0.12 ? "WARNING" : "DANGER"; }
-const alertCfg: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  OUTPERFORM: { label: "시장 대비 우수", color: "#0ea5e9", bg: "#0c2d48", border: "#0e4f7a" },
-  NORMAL: { label: "시장과 유사", color: "#94a3b8", bg: "#1e293b", border: "#334155" },
-  WARNING: { label: "시장 대비 약세", color: "#f59e0b", bg: "#422006", border: "#713f12" },
-  DANGER: { label: "매도 검토 필요", color: "#ef4444", bg: "#450a0a", border: "#7f1d1d" },
-};
 function fmt(n: number) { return new Intl.NumberFormat("ko-KR").format(n); }
 const BENCH_RET: Record<string, number> = { KOSPI: 0.054, KOSDAQ: 0.038 };
 
 const IconMemo = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
 const IconWarn = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
 const IconCheck = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>;
-const IconBack = () => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>;
+const IconBack = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>;
 
 export default function Home() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
@@ -48,6 +43,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [priceLoading, setPriceLoading] = useState(false);
   const [view, setView] = useState("dashboard");
+  const [prevView, setPrevView] = useState("dashboard");
   const [selInst, setSelInst] = useState<string | null>(null);
   const [editTrade, setEditTrade] = useState<any>(null);
   const [form, setForm] = useState({ instrument_id: "", trade_date: new Date().toISOString().split("T")[0], side: "BUY", quantity: "", price: "", note: "" });
@@ -68,8 +64,51 @@ export default function Home() {
   const [memoText, setMemoText] = useState("");
   const [authPwConfirm, setAuthPwConfirm] = useState("");
   const [authSuccess, setAuthSuccess] = useState("");
+  const [editingNote, setEditingNote] = useState<string | null>(null);
+  const [noteText, setNoteText] = useState("");
 
-useEffect(() => {
+  // Browser back/forward support
+  useEffect(() => {
+    const handlePop = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith("#stock/")) {
+        const id = hash.replace("#stock/", "");
+        setSelInst(id);
+        setView("detail");
+      } else if (hash === "#trades") {
+        setView("trades");
+        setSelInst(null);
+      } else if (hash === "#add") {
+        setView("add");
+        setSelInst(null);
+      } else {
+        setView("dashboard");
+        setSelInst(null);
+      }
+    };
+    window.addEventListener("popstate", handlePop);
+    return () => window.removeEventListener("popstate", handlePop);
+  }, []);
+
+  function navigateTo(v: string, instId?: string) {
+    if (v === "detail" && instId) {
+      window.history.pushState(null, "", `#stock/${instId}`);
+      setSelInst(instId);
+    } else if (v === "trades") {
+      window.history.pushState(null, "", "#trades");
+    } else if (v === "add") {
+      window.history.pushState(null, "", "#add");
+    } else {
+      window.history.pushState(null, "", window.location.pathname);
+    }
+    setView(v);
+  }
+
+  function goBack() {
+    window.history.back();
+  }
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
       if (session?.user) loadData();
@@ -104,10 +143,7 @@ useEffect(() => {
 
   async function signOut() {
     await supabase.auth.signOut();
-    setUser(null);
-    setInstruments([]);
-    setTrades([]);
-    setCurrentPrices({});
+    setUser(null); setInstruments([]); setTrades([]); setCurrentPrices({});
   }
 
   async function saveInstMemo(instId: string) {
@@ -116,8 +152,13 @@ useEffect(() => {
     setEditingMemo(null);
   }
 
+  async function saveTradeNote(tradeId: string) {
+    await supabase.from("trades").update({ note: noteText }).eq("id", tradeId);
+    setTrades(p => p.map(t => t.id === tradeId ? { ...t, note: noteText } : t));
+    setEditingNote(null);
+  }
+
   async function loadData() {
-    // 지수 조회
     try {
       const mRes = await fetch("/api/market-index");
       const mData = await mRes.json();
@@ -132,7 +173,6 @@ useEffect(() => {
     if (i && i.length > 0) setForm(f => ({ ...f, instrument_id: f.instrument_id || i[0].id }));
     setLoading(false);
 
-// 현재가 조회 (병렬)
     if (i && i.length > 0) {
       const prices: Record<string, number> = {};
       const changes: Record<string, number> = {};
@@ -180,9 +220,7 @@ useEffect(() => {
     const existing = instruments.find(i => i.symbol === item.symbol);
     if (existing) {
       setForm(f => ({ ...f, instrument_id: existing.id }));
-      setShowNewInst(false);
-      setSearchQuery("");
-      setSearchResults([]);
+      setShowNewInst(false); setSearchQuery(""); setSearchResults([]);
       return;
     }
     const { data } = await supabase.from("instruments").insert({
@@ -191,9 +229,7 @@ useEffect(() => {
     if (data) {
       setInstruments(p => [...p, data]);
       setForm(f => ({ ...f, instrument_id: data.id }));
-      setShowNewInst(false);
-      setSearchQuery("");
-      setSearchResults([]);
+      setShowNewInst(false); setSearchQuery(""); setSearchResults([]);
     }
   }
 
@@ -206,7 +242,7 @@ useEffect(() => {
   async function addTrade() {
     if (!form.quantity || !form.price || !form.instrument_id) return;
     const { data } = await supabase.from("trades").insert({ instrument_id: form.instrument_id, trade_date: form.trade_date, side: form.side, quantity: parseInt(form.quantity), price: parseInt(form.price), note: form.note.trim(), user_id: user.id }).select().single();
-    if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "", note: "" })); setView("dashboard"); loadData(); }
+    if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "", note: "" })); navigateTo("dashboard"); loadData(); }
   }
 
   async function saveEdit() {
@@ -238,19 +274,30 @@ useEffect(() => {
     const totalRealized = positions.reduce((s: number, p: any) => s + p.realizedPnl, 0);
     const totalTrades = trades.length;
     const noMemo = trades.filter(t => !t.note?.trim()).length;
-    return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo };
+    const totalReturnRate = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
+    return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
   }, [positions, trades]);
+
   const instTrades = useMemo(() => selInst ? trades.filter(t => t.instrument_id === selInst).sort((a, b) => new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime()) : [], [trades, selInst]);
   const selPos = positions.find((p: any) => p.id === selInst);
   const selInstData = instruments.find(i => i.id === selInst);
 
-  if (loading) return <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", gap: 16 }}><div style={{ fontSize: 36 }}>📊</div><div style={{ fontSize: 18, fontWeight: 700 }}>주식노트</div><div style={{ fontSize: 12, whiteSpace: "nowrap", padding: "6px 10px", color: "#64748b" }}>손실을 줄이는 투자 습관</div></div>;
-if (!user) return (
+  // --- LOADING ---
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", gap: 16 }}>
+      <div style={{ fontSize: 36 }}>📊</div>
+      <div style={{ fontSize: 18, fontWeight: 700 }}>주식노트</div>
+      <div style={{ fontSize: 13, color: "#64748b" }}>손실을 줄이는 투자 습관</div>
+    </div>
+  );
+
+  // --- AUTH ---
+  if (!user) return (
     <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
       <div style={{ width: 360, padding: 32, borderRadius: 16, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📊</div>
-        <span style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc", whiteSpace: "nowrap" }}>주식노트</span>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📊</div>
+          <span style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>주식노트</span>
         </div>
         <button onClick={signInGoogle} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#e2e8f0", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
@@ -279,105 +326,210 @@ if (!user) return (
     </div>
   );
 
+  // --- MAIN APP ---
   return (
     <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
-      <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📊</div>
-          <span style={{ fontSize: 17, fontWeight: 800, color: "#f8fafc" }}>주식노트</span>
-        </div>
+
+      {/* HEADER */}
+      <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50 }}>
         {view === "detail" ? (
-          <button onClick={() => { setView("dashboard"); setSelInst(null); }} style={{ ...nb, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}><IconBack /> 돌아가기</button>
+          <button onClick={goBack} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#94a3b8", fontSize: 14, cursor: "pointer", padding: 0 }}><IconBack /> 뒤로</button>
         ) : (
-          <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 10, padding: 3 }}>
-            {[{ k: "dashboard", l: "보유현황" }, { k: "trades", l: "거래내역" }, { k: "add", l: "＋ 기록" }].map(t => (
-              <button key={t.k} onClick={() => setView(t.k)} style={{ ...nb, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", fontWeight: view === t.k ? 700 : 500 }}>{t.l}</button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 7, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>📊</div>
+            <span style={{ fontSize: 16, fontWeight: 800, color: "#f8fafc" }}>주식노트</span>
+          </div>
+        )}
+        {view !== "detail" && (
+          <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 2 }}>
+            {[{ k: "dashboard", l: "보유현황" }, { k: "trades", l: "거래내역" }, { k: "add", l: "+ 기록" }].map(t => (
+              <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 12px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
           </div>
         )}
-        <button onClick={signOut} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", marginLeft: 8 }}>로그아웃</button>
+        <button onClick={signOut} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>로그아웃</button>
       </header>
 
-      <main style={{ maxWidth: 880, margin: "0 auto", padding: "24px 16px 60px" }}>
+      <main style={{ maxWidth: 680, margin: "0 auto", padding: "16px 12px 60px" }}>
 
+        {/* ============ DASHBOARD ============ */}
         {view === "dashboard" && <div>
-          {totals.noMemo > 0 ? <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", display: "flex", alignItems: "center", gap: 10 }}><IconWarn /><span style={{ fontSize: 13, color: "#fbbf24" }}>이유 미기록 거래 <b>{totals.noMemo}건</b></span></div>
-          : trades.length > 0 ? <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 10, background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", display: "flex", alignItems: "center", gap: 10 }}><IconCheck /><span style={{ fontSize: 13, color: "#4ade80" }}>모든 거래에 이유가 기록됨</span></div> : null}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 10 }}>
-              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>총 투자금</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totals.totalInvested)}원</div></div>
-              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가금액</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totals.totalEval)}원</div></div>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 24 }}>
-            <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가손익</div><div style={{ fontSize: 15, fontWeight: 800, color: totals.totalUnrealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalUnrealized >= 0 ? "+" : ""}{fmt(totals.totalUnrealized)}원</div></div>
-              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>실현손익</div><div style={{ fontSize: 15, fontWeight: 800, color: totals.totalRealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원</div></div>
-              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>기록률</div><div style={{ fontSize: 18, fontWeight: 800, color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</div></div>
-            </div>
-
-          {!positions.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569" }}><div style={{ fontSize: 14, marginBottom: 8 }}>아직 기록된 거래가 없습니다</div><button onClick={() => setView("add")} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>첫 거래 기록하기</button></div>}
-
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {[...positions].sort((a: any, b: any) => (b.avgPrice * b.totalQty) - (a.avgPrice * a.totalQty)).map((p: any) => { const a = alertCfg[p.alertLevel]; return (
-              <div key={p.id} onClick={() => { setSelInst(p.id); setView("detail"); }} style={{ ...cs, padding: "16px 18px", cursor: "pointer", position: "relative" }}>
-                {p.noMemoCount > 0 && <div style={{ position: "absolute", top: 12, right: 14 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} /></div>}
-                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flex: "0 0 auto" }}><span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span><span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{p.totalQty}주 · {holdingDays(p.firstBuyDate)}일</span>{p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{p.firstMemo}</span>}</div>
-                      <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", minWidth: 60 }} onClick={(e: any) => { e.stopPropagation(); setEditingMemo(p.id); setMemoText(p.memo || ""); }}>
-                        {editingMemo === p.id ? (
-                          <div style={{ display: "flex", gap: 4, justifyContent: "center" }} onClick={(e: any) => e.stopPropagation()}>
-                            <input value={memoText} onChange={(e: any) => setMemoText(e.target.value)} placeholder="메모 입력..." style={{ ...is, width: 120, fontSize: 11, padding: "4px 8px" }} autoFocus onKeyDown={(e: any) => { if (e.key === "Enter") saveInstMemo(p.id); if (e.key === "Escape") setEditingMemo(null); }} />
-                            <button onClick={(e: any) => { e.stopPropagation(); saveInstMemo(p.id); }} style={{ padding: "4px 8px", borderRadius: 4, border: "none", background: "#7c3aed", color: "#fff", fontSize: 10, fontWeight: 700, cursor: "pointer" }}>✓</button>
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: 11, color: p.memo ? "#8b9dc3" : "#475569", fontStyle: p.memo ? "italic" : "normal", cursor: "pointer" }}>{p.memo || "+ 메모"}</span>
-                        )}
-                      </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원 ({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%)</span>
-                        <span style={{ fontSize: 11, color: "#475569" }}>|</span>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</span>
-                      </div>
+          {/* Summary Card - 증권앱 스타일 */}
+          {positions.length > 0 && (
+            <div style={{ ...cs, marginBottom: 16, padding: "20px 20px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>평가금액</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.5px" }}>{fmt(totals.totalEval)}원</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: totals.totalUnrealized >= 0 ? "#ef4444" : "#3b82f6", marginTop: 4 }}>
+                    {fmt(Math.abs(totals.totalUnrealized))}원 &nbsp;{totals.totalReturnRate >= 0 ? "+" : ""}{totals.totalReturnRate.toFixed(2)}%
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : fmt(p.avgPrice * p.totalQty) + "원"}</div>
-                {p.currentPrice > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6" }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원  {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 11, color: "#b97070" }}>매수 {trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</span><span style={{ fontSize: 11, color: "#7090b9" }}>매도 {trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</span></div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>실현손익</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: totals.totalRealized >= 0 ? "#ef4444" : "#3b82f6" }}>
+                    {totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원
+                  </div>
                 </div>
               </div>
-            ); })}
+              <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12, color: "#64748b" }}>
+                <span>투자금 {fmt(totals.totalInvested)}원</span>
+                <span>기록률 <b style={{ color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</b></span>
+                <span>{positions.length}종목 · {totals.totalTrades}건</span>
+              </div>
+            </div>
+          )}
+
+          {/* Alert */}
+          {totals.noMemo > 0 ? (
+            <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", display: "flex", alignItems: "center", gap: 8 }}>
+              <IconWarn /><span style={{ fontSize: 12, color: "#fbbf24" }}>이유 미기록 거래 <b>{totals.noMemo}건</b></span>
+            </div>
+          ) : trades.length > 0 ? (
+            <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 8, background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.12)", display: "flex", alignItems: "center", gap: 8 }}>
+              <IconCheck /><span style={{ fontSize: 12, color: "#4ade80" }}>모든 거래에 이유가 기록됨</span>
+            </div>
+          ) : null}
+
+          {/* Empty State */}
+          {!positions.length && (
+            <div style={{ textAlign: "center", padding: "60px 0", color: "#475569" }}>
+              <div style={{ fontSize: 14, marginBottom: 8 }}>아직 기록된 거래가 없습니다</div>
+              <button onClick={() => navigateTo("add")} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>첫 거래 기록하기</button>
+            </div>
+          )}
+
+          {/* Stock Cards */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {[...positions].sort((a: any, b: any) => (b.currentPrice > 0 ? b.currentPrice * b.totalQty : b.avgPrice * b.totalQty) - (a.currentPrice > 0 ? a.currentPrice * a.totalQty : a.avgPrice * a.totalQty)).map((p: any) => (
+              <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "14px 16px", cursor: "pointer" }}>
+                {/* Row 1: Name + Eval Amount */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span>
+                      {p.noMemoCount > 0 && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b" }} />}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
+                    {p.currentPrice > 0 && (
+                      <div style={{ fontSize: 12, fontWeight: 600, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1 }}>
+                        {p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원  {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Row 2: First memo + trade counts + day change */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
+                  <div style={{ flex: 1, overflow: "hidden" }}>
+                    {p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: 280 }}>{p.firstMemo}</span>}
+                    {!p.firstMemo && p.memo && <span style={{ fontSize: 11, color: "#7c8db5", fontStyle: "italic" }}>{p.memo}</span>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
+                    <span style={{ fontSize: 11, color: "#b97070" }}>매수{trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}</span>
+                    <span style={{ fontSize: 11, color: "#7090b9" }}>매도{trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}</span>
+                    <span style={{ fontSize: 11, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", fontWeight: 600 }}>오늘 {(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>}
 
+        {/* ============ DETAIL ============ */}
         {view === "detail" && selInstData && <div>
-          <div style={{ ...cs, marginBottom: 20, padding: "20px 22px" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>{selInstData.name}</div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>{selInstData.symbol} · {selInstData.market}</div>
-            {selPos && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginTop: 14 }}>
-              <div><div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>평균단가</div><div style={{ fontSize: 16, fontWeight: 800 }}>{fmt(selPos.avgPrice)}원</div></div>
-              <div><div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>보유수량</div><div style={{ fontSize: 16, fontWeight: 800 }}>{selPos.totalQty}주</div></div>
-              <div><div style={{ fontSize: 11, color: "#64748b", marginBottom: 4 }}>보유일수</div><div style={{ fontSize: 16, fontWeight: 800 }}>{holdingDays(selPos.firstBuyDate)}일</div></div>
-            </div>}
+          {/* Header Card */}
+          <div style={{ ...cs, marginBottom: 16, padding: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div>
+                <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 2 }}>{selInstData.name}</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>{selInstData.symbol} · {selInstData.market}</div>
+              </div>
+              {selPos && (
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 22, fontWeight: 800 }}>{selPos.currentPrice > 0 ? fmt(selPos.currentPrice * selPos.totalQty) : fmt(selPos.avgPrice * selPos.totalQty)}원</div>
+                  {selPos.currentPrice > 0 && (
+                    <div style={{ fontSize: 14, fontWeight: 700, color: selPos.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2 }}>
+                      {selPos.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(selPos.unrealizedPnl))}원  {(selPos.stockReturn >= 0 ? "+" : "")}{(selPos.stockReturn * 100).toFixed(2)}%
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {selPos && (
+              <div style={{ display: "flex", gap: 16, marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12, color: "#64748b" }}>
+                <span>평균단가 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.avgPrice)}원</b></span>
+                <span>보유 <b style={{ color: "#e2e8f0" }}>{selPos.totalQty}주</b></span>
+                <span>{holdingWeeks(selPos.firstBuyDate)}</span>
+                <span style={{ color: (dayChanges[selInstData.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>오늘 {(dayChanges[selInstData.id] || 0) >= 0 ? "+" : ""}{(dayChanges[selInstData.id] || 0).toFixed(2)}%</span>
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 14, display: "flex", alignItems: "center", gap: 8 }}><IconMemo /> 매매 기록 타임라인</div>
-          <div style={{ position: "relative", paddingLeft: 20 }}>
-            <div style={{ position: "absolute", left: 7, top: 8, bottom: 8, width: 2, background: "rgba(255,255,255,0.06)" }} />
-            {instTrades.map((t, i) => { const hm = !!t.note?.trim(); return (
-              <div key={t.id} style={{ position: "relative", marginBottom: i < instTrades.length - 1 ? 14 : 0, paddingLeft: 16 }}>
-                <div style={{ position: "absolute", left: -16, top: 6, width: 12, height: 12, borderRadius: "50%", background: t.side === "BUY" ? "#ef4444" : "#3b82f6", border: "2px solid #080c14" }} />
-                <div style={{ ...cs, padding: "14px 18px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: hm ? 10 : 0 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(59,130,246,0.15)" : "rgba(239,68,68,0.15)", color: t.side === "BUY" ? "#60a5fa" : "#fca5a5" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
+
+          {/* Instrument Memo */}
+          <div style={{ ...cs, marginBottom: 16, padding: "14px 18px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>📌 종목 메모</span>
+              {editingMemo !== selInstData.id && (
+                <button onClick={() => { setEditingMemo(selInstData.id); setMemoText(selInstData.memo || ""); }} style={{ fontSize: 11, color: "#8b5cf6", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}>수정</button>
+              )}
+            </div>
+            {editingMemo === selInstData.id ? (
+              <div>
+                <textarea value={memoText} onChange={(e: any) => setMemoText(e.target.value)} placeholder="이 종목에 대한 메모를 남겨보세요..." rows={3} style={{ ...is, resize: "vertical", fontSize: 13, lineHeight: 1.6, minHeight: 60, fontFamily: "inherit" }} autoFocus />
+                <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                  <button onClick={() => setEditingMemo(null)} style={{ padding: "6px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 12, cursor: "pointer" }}>취소</button>
+                  <button onClick={() => saveInstMemo(selInstData.id)} style={{ padding: "6px 14px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: selInstData.memo ? "#cbd5e1" : "#475569", lineHeight: 1.6 }}>
+                {selInstData.memo || "메모가 없습니다. 수정을 눌러 추가하세요."}
+              </div>
+            )}
+          </div>
+
+          {/* Trade Timeline */}
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}><IconMemo /> 매매 기록</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {instTrades.map((t) => {
+              const hm = !!t.note?.trim();
+              const isEditingNote = editingNote === t.id;
+              return (
+                <div key={t.id} style={{ ...cs, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hm || isEditingNote ? 10 : 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
                     <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
                     <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{t.quantity}주 × {fmt(t.price)}원</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, marginLeft: "auto" }}>{fmt(t.quantity * t.price)}원</span>
                   </div>
-                  {hm ? <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#3b82f6" : "#ef4444"}` }}><div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{t.note}</div></div>
-                  : <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, background: "rgba(245,158,11,0.06)", border: "1px dashed rgba(245,158,11,0.2)", display: "flex", alignItems: "center", gap: 6 }}><IconWarn /><span style={{ fontSize: 12, color: "#fbbf24" }}>이유 미기록</span></div>}
+                  {isEditingNote ? (
+                    <div>
+                      <textarea value={noteText} onChange={(e: any) => setNoteText(e.target.value)} placeholder="매매 이유를 기록하세요..." rows={2} style={{ ...is, resize: "vertical", fontSize: 13, lineHeight: 1.6, minHeight: 50, fontFamily: "inherit" }} autoFocus />
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                        <button onClick={() => setEditingNote(null)} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
+                        <button onClick={() => saveTradeNote(t.id)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                      </div>
+                    </div>
+                  ) : hm ? (
+                    <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(t.note); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}`, cursor: "pointer" }}>
+                      <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{t.note}</div>
+                    </div>
+                  ) : (
+                    <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(""); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(245,158,11,0.06)", border: "1px dashed rgba(245,158,11,0.2)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                      <IconWarn /><span style={{ fontSize: 12, color: "#fbbf24" }}>이유 미기록 — 탭하여 추가</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            ); })}
+              );
+            })}
           </div>
         </div>}
 
+        {/* ============ TRADES ============ */}
         {view === "trades" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {!trades.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569", fontSize: 14 }}>거래내역이 없습니다</div>}
           {[...trades].sort((a, b) => new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime()).map(t => {
@@ -387,7 +539,7 @@ if (!user) return (
                 <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
                   <select value={editTrade.instrument_id} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, instrument_id: e.target.value }))} style={{ ...ei, flex: "0 0 120px" }}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
                   <input type="date" value={editTrade.trade_date} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, trade_date: e.target.value }))} style={{ ...ei, flex: "0 0 130px" }} />
-                  {(["BUY", "SELL"] as const).map(s => <button key={s} onClick={() => setEditTrade((p: any) => ({ ...p, side: s }))} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid", cursor: "pointer", fontSize: 11, fontWeight: 700, background: editTrade.side === s ? (s === "BUY" ? "rgba(59,130,246,0.15)" : "rgba(239,68,68,0.15)") : "transparent", borderColor: editTrade.side === s ? (s === "BUY" ? "#3b82f6" : "#ef4444") : "rgba(255,255,255,0.08)", color: editTrade.side === s ? (s === "BUY" ? "#60a5fa" : "#fca5a5") : "#64748b" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
+                  {(["BUY", "SELL"] as const).map(s => <button key={s} onClick={() => setEditTrade((p: any) => ({ ...p, side: s }))} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid", cursor: "pointer", fontSize: 11, fontWeight: 700, background: editTrade.side === s ? (s === "BUY" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)") : "transparent", borderColor: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.08)", color: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
                   <input type="number" value={editTrade.quantity} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, quantity: e.target.value }))} style={{ ...ei, flex: "0 0 70px", textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>주</span>
                   <input type="number" value={editTrade.price} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, price: e.target.value }))} style={{ ...ei, flex: "0 0 110px", textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>원</span>
                 </div>
@@ -402,9 +554,9 @@ if (!user) return (
               </div>
             );
             return (
-              <div key={t.id} style={{ ...cs, padding: "14px 18px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: hm ? 8 : 0 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(59,130,246,0.15)" : "rgba(239,68,68,0.15)", color: t.side === "BUY" ? "#60a5fa" : "#fca5a5" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
+              <div key={t.id} style={{ ...cs, padding: "12px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hm ? 8 : 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>{inst?.name}</span>
                   <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
                   <span style={{ fontSize: 12, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>
@@ -412,12 +564,13 @@ if (!user) return (
                   {!hm && <IconWarn />}
                   <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>수정</button>
                 </div>
-                {hm && <div style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#3b82f6" : "#ef4444"}` }}><div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{t.note}</div></div>}
+                {hm && <div style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}` }}><div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{t.note}</div></div>}
               </div>
             );
           })}
         </div>}
 
+        {/* ============ ADD TRADE ============ */}
         {view === "add" && <div style={{ maxWidth: 480, margin: "0 auto" }}>
           <div style={{ ...cs, padding: 24 }}>
             <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 22 }}>거래 기록</div>
@@ -445,14 +598,14 @@ if (!user) return (
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div><label style={ls}>날짜</label><input type="date" value={form.trade_date} onChange={(e: any) => setForm(f => ({ ...f, trade_date: e.target.value }))} style={is} /></div>
               <div><label style={ls}>구분</label><div style={{ display: "flex", gap: 6 }}>
-              {["BUY","SELL"].map(s => <button key={s} onClick={() => setForm(f => ({...f, side: s}))} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.06)", background: form.side === s ? (s === "BUY" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent", color: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
+                {["BUY","SELL"].map(s => <button key={s} onClick={() => setForm(f => ({...f, side: s}))} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.06)", background: form.side === s ? (s === "BUY" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent", color: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
               </div></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div><label style={ls}>수량</label><input type="number" placeholder="0" value={form.quantity} onChange={(e: any) => setForm(f => ({ ...f, quantity: e.target.value }))} style={is} /></div>
               <div><label style={ls}>단가</label><input type="number" placeholder="0" value={form.price} onChange={(e: any) => setForm(f => ({ ...f, price: e.target.value }))} style={is} /></div>
             </div>
-            {form.quantity && form.price && <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.03)", display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 12, color: "#64748b" }}>총 금액</span><span style={{ fontSize: 15, fontWeight: 800, color: form.side === "BUY" ? "#60a5fa" : "#fca5a5" }}>{fmt(parseInt(form.quantity) * parseInt(form.price))}원</span></div>}
+            {form.quantity && form.price && <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.03)", display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 12, color: "#64748b" }}>총 금액</span><span style={{ fontSize: 15, fontWeight: 800, color: form.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{fmt(parseInt(form.quantity) * parseInt(form.price))}원</span></div>}
             <div style={{ marginBottom: 20, padding: 16, borderRadius: 10, background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.12)" }}>
               <label style={{ ...ls, display: "flex", alignItems: "center", gap: 6, color: "#c4b5fd", marginBottom: 10 }}><IconMemo />{form.side === "BUY" ? "왜 매수하나요?" : "왜 매도하나요?"}</label>
               <textarea value={form.note} onChange={(e: any) => setForm(f => ({ ...f, note: e.target.value }))} placeholder={form.side === "BUY" ? "예: 방산 수주 증가 + 중동 긴장 고조" : "예: 목표가 도달. 비중 축소"} rows={3} style={{ ...is, resize: "vertical", lineHeight: 1.6, minHeight: 80, fontFamily: "inherit", borderColor: "rgba(124,58,237,0.15)", background: "rgba(255,255,255,0.02)" }} />
