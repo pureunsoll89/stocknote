@@ -244,13 +244,13 @@ useEffect(() => {
   const selPos = positions.find((p: any) => p.id === selInst);
   const selInstData = instruments.find(i => i.id === selInst);
 
-  if (loading) return <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", gap: 16 }}><div style={{ fontSize: 36 }}>📊</div><div style={{ fontSize: 18, fontWeight: 700 }}>투자노트</div><div style={{ fontSize: 13, color: "#64748b" }}>손실을 줄이는 투자 습관</div></div>;
+  if (loading) return <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", gap: 16 }}><div style={{ fontSize: 36 }}>📊</div><div style={{ fontSize: 18, fontWeight: 700 }}>주식노트</div><div style={{ fontSize: 12, whiteSpace: "nowrap", padding: "6px 10px", color: "#64748b" }}>손실을 줄이는 투자 습관</div></div>;
 if (!user) return (
     <div style={{ minHeight: "100vh", background: "#080c14", display: "flex", alignItems: "center", justifyContent: "center", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
       <div style={{ width: 360, padding: 32, borderRadius: 16, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
         <div style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📊</div>
-          <span style={{ fontSize: 22, fontWeight: 800, color: "#f8fafc" }}>투자노트</span>
+        <span style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc", whiteSpace: "nowrap" }}>주식노트</span>
         </div>
         <button onClick={signInGoogle} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#e2e8f0", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
@@ -284,7 +284,7 @@ if (!user) return (
       <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ width: 30, height: 30, borderRadius: 8, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📊</div>
-          <span style={{ fontSize: 17, fontWeight: 800, color: "#f8fafc" }}>투자노트</span>
+          <span style={{ fontSize: 17, fontWeight: 800, color: "#f8fafc" }}>주식노트</span>
         </div>
         {view === "detail" ? (
           <button onClick={() => { setView("dashboard"); setSelInst(null); }} style={{ ...nb, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}><IconBack /> 돌아가기</button>
@@ -309,8 +309,8 @@ if (!user) return (
               <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가금액</div><div style={{ fontSize: 20, fontWeight: 800 }}>{fmt(totals.totalEval)}원</div></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10, marginBottom: 24 }}>
-            <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalUnrealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalUnrealized >= 0 ? "+" : ""}{fmt(totals.totalUnrealized)}원</div></div>
-              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>실현손익</div><div style={{ fontSize: 18, fontWeight: 800, color: totals.totalRealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원</div></div>
+            <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>평가손익</div><div style={{ fontSize: 15, fontWeight: 800, color: totals.totalUnrealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalUnrealized >= 0 ? "+" : ""}{fmt(totals.totalUnrealized)}원</div></div>
+              <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>실현손익</div><div style={{ fontSize: 15, fontWeight: 800, color: totals.totalRealized >= 0 ? "#ef4444" : "#3b82f6" }}>{totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원</div></div>
               <div style={cs}><div style={{ fontSize: 11, color: "#64748b", marginBottom: 5 }}>기록률</div><div style={{ fontSize: 18, fontWeight: 800, color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</div></div>
             </div>
 
@@ -320,7 +320,7 @@ if (!user) return (
             {[...positions].sort((a: any, b: any) => (b.avgPrice * b.totalQty) - (a.avgPrice * a.totalQty)).map((p: any) => { const a = alertCfg[p.alertLevel]; return (
               <div key={p.id} onClick={() => { setSelInst(p.id); setView("detail"); }} style={{ ...cs, padding: "16px 18px", cursor: "pointer", position: "relative" }}>
                 {p.noMemoCount > 0 && <div style={{ position: "absolute", top: 12, right: 14 }}><div style={{ width: 7, height: 7, borderRadius: "50%", background: "#f59e0b" }} /></div>}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8, gap: 8 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", flex: "0 0 auto" }}><span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span><span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{p.totalQty}주 · {holdingDays(p.firstBuyDate)}일</span>{p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 150 }}>{p.firstMemo}</span>}</div>
                       <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", minWidth: 60 }} onClick={(e: any) => { e.stopPropagation(); setEditingMemo(p.id); setMemoText(p.memo || ""); }}>
                         {editingMemo === p.id ? (
@@ -339,13 +339,13 @@ if (!user) return (
                       </div>
                 </div>
                 <div style={{ display: "flex", gap: 20, alignItems: "baseline" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}>
                     <span style={{ fontSize: 13, color: "#94a3b8" }}>{fmt(p.avgPrice * p.totalQty)}원</span>
                     <span style={{ fontSize: 11, color: "#475569" }}>→</span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: p.currentPrice > 0 ? (p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6") : "#e2e8f0" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) + "원" : "현재가 없음"}</span>
                     {p.currentPrice > 0 && <span style={{ fontSize: 13, fontWeight: 800, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6" }}>{(p.unrealizedPnl >= 0 ? "+" : "")}{fmt(p.unrealizedPnl)}원 ({(p.stockReturn >= 0 ? "+" : "") + (p.stockReturn * 100).toFixed(2)}%)</span>}
                   </div>
-                  <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}><span style={{ fontSize: 11, color: "#b97070" }}>매수 {trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</span><span style={{ fontSize: 11, color: "#7090b9" }}>매도 {trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</span></div>
+                  <div style={{ marginLeft: "auto", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}><span style={{ fontSize: 11, color: "#b97070" }}>매수 {trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</span><span style={{ fontSize: 11, color: "#7090b9" }}>매도 {trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</span></div>
                 </div>
               </div>
             ); })}
