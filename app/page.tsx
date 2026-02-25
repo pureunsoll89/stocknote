@@ -66,6 +66,8 @@ export default function Home() {
   const [authError, setAuthError] = useState("");
   const [editingMemo, setEditingMemo] = useState<string | null>(null);
   const [memoText, setMemoText] = useState("");
+  const [authPwConfirm, setAuthPwConfirm] = useState("");
+  const [authSuccess, setAuthSuccess] = useState("");
 
 useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -87,10 +89,17 @@ useEffect(() => {
 
   async function signInEmail() {
     setAuthError("");
-    const { error } = authMode === "login"
-      ? await supabase.auth.signInWithPassword({ email: authEmail, password: authPw })
-      : await supabase.auth.signUp({ email: authEmail, password: authPw });
-    if (error) setAuthError(error.message);
+    setAuthSuccess("");
+    if (authMode === "signup") {
+      if (authPw !== authPwConfirm) { setAuthError("비밀번호가 일치하지 않습니다"); return; }
+      if (authPw.length < 6) { setAuthError("비밀번호는 6자 이상이어야 합니다"); return; }
+      const { error } = await supabase.auth.signUp({ email: authEmail, password: authPw });
+      if (error) setAuthError(error.message);
+      else setAuthSuccess("인증 메일을 확인해주세요! 메일함을 확인 후 인증 링크를 클릭하세요.");
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email: authEmail, password: authPw });
+      if (error) setAuthError(error.message);
+    }
   }
 
   async function signOut() {
@@ -253,8 +262,10 @@ if (!user) return (
           <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
         </div>
         <input type="email" placeholder="이메일" value={authEmail} onChange={(e: any) => setAuthEmail(e.target.value)} style={{ ...is, marginBottom: 10 }} />
-        <input type="password" placeholder="비밀번호" value={authPw} onChange={(e: any) => setAuthPw(e.target.value)} style={{ ...is, marginBottom: 10 }} onKeyDown={(e: any) => e.key === "Enter" && signInEmail()} />
+        <input type="password" placeholder="비밀번호" value={authPw} onChange={(e: any) => setAuthPw(e.target.value)} style={{ ...is, marginBottom: 10 }} onKeyDown={(e: any) => authMode === "login" && e.key === "Enter" && signInEmail()} />
+        {authMode === "signup" && <input type="password" placeholder="비밀번호 확인" value={authPwConfirm} onChange={(e: any) => setAuthPwConfirm(e.target.value)} style={{ ...is, marginBottom: 10 }} onKeyDown={(e: any) => e.key === "Enter" && signInEmail()} />}
         {authError && <div style={{ fontSize: 12, color: "#f87171", marginBottom: 10 }}>{authError}</div>}
+        {authSuccess && <div style={{ fontSize: 12, color: "#34d399", marginBottom: 10 }}>{authSuccess}</div>}
         <button onClick={signInEmail} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", marginBottom: 12 }}>
           {authMode === "login" ? "로그인" : "회원가입"}
         </button>
