@@ -403,35 +403,35 @@ export default function Home() {
           {/* Stock Cards */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {[...positions].sort((a: any, b: any) => (b.currentPrice > 0 ? b.currentPrice * b.totalQty : b.avgPrice * b.totalQty) - (a.currentPrice > 0 ? a.currentPrice * a.totalQty : a.avgPrice * a.totalQty)).map((p: any) => (
-              <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "14px 16px", cursor: "pointer" }}>
-                {/* Row 1: Name + Eval Amount */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
-                  <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 15, fontWeight: 700 }}>{p.name}</span>
-                      {p.noMemoCount > 0 && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b" }} />}
+              <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "12px 14px", cursor: "pointer" }}>
+                <div style={{ display: "flex", gap: 12 }}>
+                  {/* Col 1: Logo area */}
+                  <div style={{ flex: "0 0 40px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0, 2)}</div>
+                  </div>
+                  {/* Col 2-5: Grid */}
+                  <div style={{ flex: 1, display: "grid", gridTemplateColumns: "minmax(80px,1.2fr) minmax(80px,1fr) minmax(70px,1fr) minmax(100px,1.3fr)", gap: "2px 10px", alignItems: "center" }}>
+                    {/* Row 1 */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</span>
+                      {p.noMemoCount > 0 && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f59e0b" }} />}
                     </div>
-                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
-                  </div>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 16, fontWeight: 700, color: "#f8fafc" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
-                    {p.currentPrice > 0 && (
-                      <div style={{ fontSize: 12, fontWeight: 600, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1 }}>
-                        {p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원  {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {/* Row 2: First memo + trade counts + day change */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 6 }}>
-                  <div style={{ flex: 1, overflow: "hidden" }}>
-                    {p.firstMemo && <span style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", maxWidth: 280 }}>{p.firstMemo}</span>}
-                    {!p.firstMemo && p.memo && <span style={{ fontSize: 11, color: "#7c8db5", fontStyle: "italic" }}>{p.memo}</span>}
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flex: "0 0 auto" }}>
-                    <span style={{ fontSize: 11, color: "#b97070" }}>매수{trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}</span>
-                    <span style={{ fontSize: 11, color: "#7090b9" }}>매도{trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}</span>
-                    <span style={{ fontSize: 11, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", fontWeight: 600 }}>오늘 {(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(2)}%</span>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
+                    <div style={{ fontSize: 11, color: p.memo ? "#8b9dc3" : "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo || "메모없음"}</div>
+                    <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</span>
+                      <span style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginLeft: 6 }}>{p.market}{(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</span>
+                    </div>
+                    {/* Row 2 */}
+                    <div style={{ fontSize: 11, color: "#64748b" }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: p.currentPrice > 0 ? (p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6") : "#64748b" }}>
+                      {p.currentPrice > 0 ? <>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원 {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</> : "-"}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.firstMemo || ""}</div>
+                    <div style={{ textAlign: "right", display: "flex", justifyContent: "flex-end", gap: 6 }}>
+                      <span style={{ fontSize: 11, color: "#b97070" }}>매수{trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</span>
+                      <span style={{ fontSize: 11, color: "#7090b9" }}>매도{trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</span>
+                    </div>
                   </div>
                 </div>
               </div>
