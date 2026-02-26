@@ -11,8 +11,10 @@ const supabase = createClient(
 interface Instrument { id: string; symbol: string; name: string; market: string; memo?: string; }
 interface Trade { id: string; instrument_id: string; trade_date: string; side: string; quantity: number; price: number; fee: number; note: string; }
 
-function calculatePosition(trades: Trade[]) {
+function calculatePosition(trades: Trade[], market?: string) {
   let totalBuyQty = 0, totalBuyAmt = 0, totalSellQty = 0, realizedPnl = 0, firstBuyDate = "";
+  const isETF = market === "ETF" || (trades.length > 0 && trades[0].instrument_id && false);
+  const sellFeeRate = isETF ? 0.0003 : 0.0021;
   const sorted = [...trades].sort((a, b) => new Date(a.trade_date).getTime() - new Date(b.trade_date).getTime());
   for (const t of sorted) {
     if (t.side === "BUY") {
@@ -20,7 +22,9 @@ function calculatePosition(trades: Trade[]) {
       if (!firstBuyDate) firstBuyDate = t.trade_date;
     } else {
       const avg = totalBuyQty > 0 ? totalBuyAmt / totalBuyQty : 0;
-      realizedPnl += (t.price - avg) * t.quantity; totalSellQty += t.quantity;
+      const sellAmount = t.price * t.quantity;
+      const sellFee = Math.round(sellAmount * sellFeeRate);
+      realizedPnl += (t.price - avg) * t.quantity - sellFee; totalSellQty += t.quantity;
     }
   }
   return { totalQty: totalBuyQty - totalSellQty, avgPrice: totalBuyQty > 0 ? Math.round(totalBuyAmt / totalBuyQty) : 0, realizedPnl: Math.round(realizedPnl), firstBuyDate };
@@ -258,7 +262,8 @@ export default function Home() {
 
   const positions = useMemo(() => instruments.map(inst => {
     const it = trades.filter(t => t.instrument_id === inst.id); if (!it.length) return null;
-    const pos = calculatePosition(it); if (pos.totalQty <= 0) return null;
+    const isETF = inst.name.startsWith("KODEX") || inst.name.startsWith("TIGER") || inst.name.startsWith("ARIRANG") || inst.name.startsWith("KBSTAR") || inst.name.startsWith("SOL") || inst.name.startsWith("ACE") || inst.name.startsWith("HANARO");
+    const pos = calculatePosition(it, isETF ? "ETF" : inst.market); if (pos.totalQty <= 0) return null;
     const cp = currentPrices[inst.id] || 0;
     const stockRet = cp > 0 && pos.avgPrice > 0 ? (cp / pos.avgPrice) - 1 : 0;
     const br = BENCH_RET[inst.market] || 0; const rr = stockRet - br;
@@ -278,7 +283,7 @@ export default function Home() {
     return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
   }, [positions, trades]);
 
-  const instTrades = useMemo(() => selInst ? trades.filter(t => t.instrument_id === selInst).sort((a, b) => new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime()) : [], [trades, selInst]);
+  const instTrades = useMemo(() => selInst ? trades.filter(t => t.instrument_id === selInst).sort((a, b) => { const d = new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime(); return d !== 0 ? d : a.id.localeCompare(b.id); }) : [], [trades, selInst]);
   const selPos = positions.find((p: any) => p.id === selInst);
   const selInstData = instruments.find(i => i.id === selInst);
 
@@ -409,22 +414,22 @@ export default function Home() {
                   <div style={{ flex: "0 0 40px" }}>
                     <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${p.symbol}.png`} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 40, height: 40, borderRadius: 10 }} /><div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0,2)}</div>
                   </div>
-                  {/* Col 2: Name + holding */}
-                  <div style={{ flex: "1 1 90px", minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, whiteSpace: "nowrap" }}>{p.name}</span>
+                  {/* Col 2: Name + holding — fixed 110px */}
+                  <div style={{ flex: "0 0 110px", minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: p.name.length > 7 ? 12 : 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 100 }}>{p.name}</span>
                       {p.noMemoCount > 0 && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f59e0b", flex: "0 0 5px" }} />}
                     </div>
                     <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
                   </div>
                   {/* Col 3: Eval + PnL */}
-                  <div style={{ flex: "0 0 auto" }}>
+                  <div style={{ flex: "0 0 120px" }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc", whiteSpace: "nowrap" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
                     {p.currentPrice > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1, whiteSpace: "nowrap" }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원 {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
                   </div>
-                  {/* Col 4: Memo + Reason */}
+                  {/* Col 4: Memo (white in quotes) + Reason */}
                   <div style={{ flex: "1 1 70px", minWidth: 0 }}>
-                    <div style={{ fontSize: 11, color: p.memo ? "#8b9dc3" : "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo || "메모없음"}</div>
+                    <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>"{p.memo}"</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
                     <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{p.firstMemo || ""}</div>
                   </div>
                   {/* Col 5: Price(change) + Index */}
@@ -536,7 +541,7 @@ export default function Home() {
         {/* ============ TRADES ============ */}
         {view === "trades" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {!trades.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569", fontSize: 14 }}>거래내역이 없습니다</div>}
-          {[...trades].sort((a, b) => new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime()).map(t => {
+          {[...trades].sort((a, b) => { const d = new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime(); return d !== 0 ? d : a.id.localeCompare(b.id); }).map(t => {
             const inst = instruments.find(i => i.id === t.instrument_id); const hm = !!t.note?.trim(); const isEd = editTrade?.id === t.id;
             if (isEd) return (
               <div key={t.id} style={{ ...cs, padding: 18, border: "1px solid rgba(124,58,237,0.25)" }}>
