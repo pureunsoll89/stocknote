@@ -429,7 +429,7 @@ export default function Home() {
                   </div>
                   {/* Col 4: Memo (white in quotes) + Reason */}
                   <div style={{ flex: "1 1 70px", minWidth: 0 }}>
-                    <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>"{p.memo}"</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
+                    <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
                     <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{p.firstMemo || ""}</div>
                   </div>
                   {/* Col 5: Price(change) + Index */}
