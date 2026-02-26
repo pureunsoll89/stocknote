@@ -71,6 +71,14 @@ export default function Home() {
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Browser back/forward support
   useEffect(() => {
@@ -407,75 +415,45 @@ export default function Home() {
           )}
 
           {/* Stock Cards */}
-          <style dangerouslySetInnerHTML={{ __html: `
-            @media (max-width: 768px) {
-              .col-desktop-only { display: none !important; }
-              .col-mobile-only { display: block !important; }
-              .row-mobile-only { display: block !important; }
-            }
-            @media (min-width: 769px) {
-              .col-desktop-only { display: block; }
-              .col-mobile-only { display: none !important; }
-              .row-mobile-only { display: none !important; }
-            }
-          ` }} />
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {[...positions].sort((a: any, b: any) => (b.currentPrice > 0 ? b.currentPrice * b.totalQty : b.avgPrice * b.totalQty) - (a.currentPrice > 0 ? a.currentPrice * a.totalQty : a.avgPrice * a.totalQty)).map((p: any) => {
-              const isExpanded = expandedCards.has(p.id);
-              const toggleExpand = (e: any) => { e.stopPropagation(); setExpandedCards(prev => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; }); };
               const buyCount = trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length;
               const sellCount = trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length;
-              return (
-              <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "12px 14px", cursor: "pointer" }}>
-                <div style={{ display: "flex", alignItems: "center" }}>
-                  {/* Col 1: Logo */}
-                  <div style={{ flex: "0 0 40px", marginRight: 12 }}>
-                    <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${p.symbol}.png`} alt={p.name} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 40, height: 40, borderRadius: 10 }} /><div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0,2)}</div>
-                  </div>
-                  {/* Col 2: Name + holding — 130px fits LG에너지솔루션 at 14px */}
-                  <div style={{ flex: "0 0 130px", minWidth: 0, marginRight: 2 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ fontSize: p.name.length > 8 ? (p.name.length > 10 ? 11 : 12) : 14, fontWeight: 700, whiteSpace: "nowrap" }}>{p.name}</span>
-                      {p.noMemoCount > 0 && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f59e0b", flex: "0 0 5px" }} />}
+              const isExpanded = expandedCards.has(p.id);
+              const toggleExpand = (e: any) => { e.stopPropagation(); setExpandedCards(prev => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; }); };
+
+              if (isMobile) return (
+                <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "12px 14px", cursor: "pointer" }}>
+                  {/* Row 1: Logo+Name left, Eval right */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                      <div style={{ flex: "0 0 36px" }}>
+                        <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${p.symbol}.png`} alt={p.name} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 36, height: 36, borderRadius: 8 }} /><div style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0,2)}</div>
+                      </div>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</span>
+                          {p.noMemoCount > 0 && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f59e0b" }} />}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 4 }}>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#f8fafc" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
+                        {p.currentPrice > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1 }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원 {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
+                      </div>
+                      <button onClick={toggleExpand} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "2px", fontSize: 12, lineHeight: 1, marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</button>
+                    </div>
                   </div>
-                  {/* Col 3: Eval + PnL — fixed 130px */}
-                  <div style={{ flex: "0 0 130px", marginRight: 8 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc", whiteSpace: "nowrap" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
-                    {p.currentPrice > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1, whiteSpace: "nowrap" }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원 {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
+                  {/* Row 2: Memo + Reason */}
+                  <div style={{ marginTop: 6, paddingLeft: 46, display: "flex", gap: 8 }}>
+                    <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
+                    <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{p.firstMemo || ""}</div>
                   </div>
-                  {/* Col 4: Memo + Reason (desktop only) */}
-                  <div className="col-desktop-only" style={{ flex: "1 1 70px", minWidth: 0, marginRight: 8 }}>
-                    <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
-                    <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{p.firstMemo || ""}</div>
-                  </div>
-                  {/* Col 5: Price + Index (desktop only) */}
-                  <div className="col-desktop-only" style={{ flex: "0 0 auto", textAlign: "right", marginRight: 8 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", whiteSpace: "nowrap" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
-                    <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
-                  </div>
-                  {/* Col 6: Buy/Sell (desktop only) */}
-                  <div className="col-desktop-only" style={{ flex: "0 0 auto", textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: "#b97070", whiteSpace: "nowrap" }}>매수{buyCount}건</div>
-                    <div style={{ fontSize: 11, color: "#7090b9", whiteSpace: "nowrap", marginTop: 2 }}>매도{sellCount}건</div>
-                  </div>
-                  {/* Mobile toggle */}
-                  <div className="col-mobile-only" style={{ flex: "0 0 auto", display: "none" }}>
-                    <button onClick={toggleExpand} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "4px", fontSize: 14, lineHeight: 1 }}>{isExpanded ? "▲" : "▼"}</button>
-                  </div>
-                </div>
-                {/* Mobile Row 2: Memo under col1+2, Reason under col3 */}
-                <div className="row-mobile-only" style={{ display: "none", marginTop: 6, paddingLeft: 44 }}>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <div style={{ flex: "0 0 130px", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
-                    <div style={{ flex: 1, fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.firstMemo || ""}</div>
-                  </div>
-                </div>
-                {/* Mobile Expanded: Price/Index + Buy/Sell */}
-                {isExpanded && (
-                  <div className="row-mobile-only" style={{ display: "none", marginTop: 8, paddingLeft: 44, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                    <div style={{ display: "flex", gap: 24 }}>
+                  {/* Row 3: Toggle area — Price/Index + Counts */}
+                  {isExpanded && (
+                    <div style={{ marginTop: 8, paddingLeft: 46, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
                         <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2 }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
@@ -485,11 +463,51 @@ export default function Home() {
                         <div style={{ fontSize: 11, color: "#7090b9", marginTop: 2 }}>매도{sellCount}건</div>
                       </div>
                     </div>
+                  )}
+                </div>
+              );
+
+              /* Desktop layout */
+              return (
+              <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "12px 14px", cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  {/* Col 1: Logo */}
+                  <div style={{ flex: "0 0 40px", marginRight: 12 }}>
+                    <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${p.symbol}.png`} alt={p.name} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 40, height: 40, borderRadius: 10 }} /><div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0,2)}</div>
                   </div>
-                )}
+                  {/* Col 2: Name + holding */}
+                  <div style={{ flex: "0 0 130px", minWidth: 0, marginRight: 2 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontSize: p.name.length > 8 ? (p.name.length > 10 ? 11 : 12) : 14, fontWeight: 700, whiteSpace: "nowrap" }}>{p.name}</span>
+                      {p.noMemoCount > 0 && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f59e0b", flex: "0 0 5px" }} />}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
+                  </div>
+                  {/* Col 3: Eval + PnL */}
+                  <div style={{ flex: "0 0 130px", marginRight: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc", whiteSpace: "nowrap" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
+                    {p.currentPrice > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1, whiteSpace: "nowrap" }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원 {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
+                  </div>
+                  {/* Col 4: Memo + Reason */}
+                  <div style={{ flex: "1 1 70px", minWidth: 0, marginRight: 8 }}>
+                    <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
+                    <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{p.firstMemo || ""}</div>
+                  </div>
+                  {/* Col 5: Price + Index */}
+                  <div style={{ flex: "0 0 auto", textAlign: "right", marginRight: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", whiteSpace: "nowrap" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
+                    <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
+                  </div>
+                  {/* Col 6: Buy/Sell */}
+                  <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                    <div style={{ fontSize: 11, color: "#b97070", whiteSpace: "nowrap" }}>매수{buyCount}건</div>
+                    <div style={{ fontSize: 11, color: "#7090b9", whiteSpace: "nowrap", marginTop: 2 }}>매도{sellCount}건</div>
+                  </div>
+                </div>
               </div>
             ); })}
           </div>
+
 
         </div>}
 
