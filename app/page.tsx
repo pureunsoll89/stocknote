@@ -70,6 +70,7 @@ export default function Home() {
   const [authSuccess, setAuthSuccess] = useState("");
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
 
   // Browser back/forward support
   useEffect(() => {
@@ -406,46 +407,90 @@ export default function Home() {
           )}
 
           {/* Stock Cards */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media (max-width: 768px) {
+              .col-desktop-only { display: none !important; }
+              .col-mobile-only { display: block !important; }
+              .row-mobile-only { display: block !important; }
+            }
+            @media (min-width: 769px) {
+              .col-desktop-only { display: block; }
+              .col-mobile-only { display: none !important; }
+              .row-mobile-only { display: none !important; }
+            }
+          ` }} />
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {[...positions].sort((a: any, b: any) => (b.currentPrice > 0 ? b.currentPrice * b.totalQty : b.avgPrice * b.totalQty) - (a.currentPrice > 0 ? a.currentPrice * a.totalQty : a.avgPrice * a.totalQty)).map((p: any) => (
+            {[...positions].sort((a: any, b: any) => (b.currentPrice > 0 ? b.currentPrice * b.totalQty : b.avgPrice * b.totalQty) - (a.currentPrice > 0 ? a.currentPrice * a.totalQty : a.avgPrice * a.totalQty)).map((p: any) => {
+              const isExpanded = expandedCards.has(p.id);
+              const toggleExpand = (e: any) => { e.stopPropagation(); setExpandedCards(prev => { const next = new Set(prev); if (next.has(p.id)) next.delete(p.id); else next.add(p.id); return next; }); };
+              const buyCount = trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length;
+              const sellCount = trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length;
+              return (
               <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "12px 14px", cursor: "pointer" }}>
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                   {/* Col 1: Logo */}
                   <div style={{ flex: "0 0 40px" }}>
-                    <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${p.symbol}.png`} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 40, height: 40, borderRadius: 10 }} /><div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0,2)}</div>
+                    <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${p.symbol}.png`} alt={p.name} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 40, height: 40, borderRadius: 10 }} /><div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0,2)}</div>
                   </div>
-                  {/* Col 2: Name + holding — fixed 110px */}
-                  <div style={{ flex: "0 0 110px", minWidth: 0 }}>
+                  {/* Col 2: Name + holding — 130px fits LG에너지솔루션 at 14px */}
+                  <div style={{ flex: "0 0 130px", minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ fontSize: p.name.length > 7 ? 12 : 14, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 100 }}>{p.name}</span>
+                      <span style={{ fontSize: p.name.length > 8 ? (p.name.length > 10 ? 11 : 12) : 14, fontWeight: 700, whiteSpace: "nowrap" }}>{p.name}</span>
                       {p.noMemoCount > 0 && <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#f59e0b", flex: "0 0 5px" }} />}
                     </div>
                     <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
                   </div>
                   {/* Col 3: Eval + PnL */}
-                  <div style={{ flex: "0 0 120px" }}>
+                  <div style={{ flex: "0 0 auto", minWidth: 100 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc", whiteSpace: "nowrap" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
                     {p.currentPrice > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1, whiteSpace: "nowrap" }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원 {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
                   </div>
-                  {/* Col 4: Memo (white in quotes) + Reason */}
-                  <div style={{ flex: "1 1 70px", minWidth: 0 }}>
+                  {/* Col 4: Memo + Reason (desktop only) */}
+                  <div className="col-desktop-only" style={{ flex: "1 1 70px", minWidth: 0 }}>
                     <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
                     <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{p.firstMemo || ""}</div>
                   </div>
-                  {/* Col 5: Price(change) + Index */}
-                  <div style={{ flex: "0 0 auto", textAlign: "right" }}>
+                  {/* Col 5: Price + Index (desktop only) */}
+                  <div className="col-desktop-only" style={{ flex: "0 0 auto", textAlign: "right" }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", whiteSpace: "nowrap" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
                     <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
                   </div>
-                  {/* Col 6: Buy/Sell counts */}
-                  <div style={{ flex: "0 0 auto", textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: "#b97070", whiteSpace: "nowrap" }}>매수{trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length}건</div>
-                    <div style={{ fontSize: 11, color: "#7090b9", whiteSpace: "nowrap", marginTop: 2 }}>매도{trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length}건</div>
+                  {/* Col 6: Buy/Sell (desktop only) */}
+                  <div className="col-desktop-only" style={{ flex: "0 0 auto", textAlign: "right" }}>
+                    <div style={{ fontSize: 11, color: "#b97070", whiteSpace: "nowrap" }}>매수{buyCount}건</div>
+                    <div style={{ fontSize: 11, color: "#7090b9", whiteSpace: "nowrap", marginTop: 2 }}>매도{sellCount}건</div>
+                  </div>
+                  {/* Mobile toggle */}
+                  <div className="col-mobile-only" style={{ flex: "0 0 auto", display: "none" }}>
+                    <button onClick={toggleExpand} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "4px", fontSize: 14, lineHeight: 1 }}>{isExpanded ? "▲" : "▼"}</button>
                   </div>
                 </div>
+                {/* Mobile Row 2: Memo under col1+2, Reason under col3 */}
+                <div className="row-mobile-only" style={{ display: "none", marginTop: 6, paddingLeft: 44 }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ flex: "0 0 130px", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
+                    <div style={{ flex: 1, fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.firstMemo || ""}</div>
+                  </div>
+                </div>
+                {/* Mobile Expanded: Price/Index + Buy/Sell */}
+                {isExpanded && (
+                  <div className="row-mobile-only" style={{ display: "none", marginTop: 8, paddingLeft: 44, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
+                        <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2 }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontSize: 11, color: "#b97070" }}>매수{buyCount}건</div>
+                        <div style={{ fontSize: 11, color: "#7090b9", marginTop: 2 }}>매도{sellCount}건</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+            ); })}
           </div>
+
         </div>}
 
         {/* ============ DETAIL ============ */}
@@ -585,7 +630,7 @@ export default function Home() {
             <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 22 }}>거래 기록</div>
             <div style={{ marginBottom: 16 }}>
               <label style={ls}>종목</label>
-              {instruments.length > 0 ? <select value={form.instrument_id} onChange={(e: any) => setForm(f => ({ ...f, instrument_id: e.target.value }))} style={is}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name} ({i.symbol})</option>)}</select>
+              {instruments.length > 0 ? <select value={form.instrument_id} onChange={(e: any) => { const id = e.target.value; setForm(f => { const hasBuys = trades.some(t => t.instrument_id === id && t.side === "BUY"); return { ...f, instrument_id: id, note: f.side === "BUY" && hasBuys && !f.note.trim() ? "추가 매수" : f.note }; }); }} style={is}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name} ({i.symbol})</option>)}</select>
               : <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>등록된 종목이 없습니다</div>}
               <button onClick={() => setShowNewInst(!showNewInst)} style={{ marginTop: 8, padding: "6px 12px", borderRadius: 6, border: "1px dashed rgba(255,255,255,0.1)", background: "transparent", color: "#8b5cf6", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>{showNewInst ? "취소" : "+ 새 종목 추가"}</button>
               {showNewInst && <div style={{ marginTop: 10, padding: 14, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -607,7 +652,7 @@ export default function Home() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div><label style={ls}>날짜</label><input type="date" value={form.trade_date} onChange={(e: any) => setForm(f => ({ ...f, trade_date: e.target.value }))} style={is} /></div>
               <div><label style={ls}>구분</label><div style={{ display: "flex", gap: 6 }}>
-                {["BUY","SELL"].map(s => <button key={s} onClick={() => setForm(f => ({...f, side: s}))} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.06)", background: form.side === s ? (s === "BUY" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent", color: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
+                {["BUY","SELL"].map(s => <button key={s} onClick={() => setForm(f => { const hasBuys = trades.some(t => t.instrument_id === f.instrument_id && t.side === "BUY"); return { ...f, side: s, note: s === "BUY" && hasBuys && (!f.note.trim() || f.note.trim() === "추가 매수") ? "추가 매수" : (s === "SELL" && f.note.trim() === "추가 매수") ? "" : f.note }; })} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.06)", background: form.side === s ? (s === "BUY" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent", color: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
               </div></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
