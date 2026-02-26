@@ -588,40 +588,77 @@ export default function Home() {
           </div>
 
           {/* Trade Timeline */}
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}><IconMemo /> 매매 기록</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {instTrades.map((t) => {
-              const hm = !!t.note?.trim();
-              const isEditingNote = editingNote === t.id;
-              return (
-                <div key={t.id} style={{ ...cs, padding: "14px 16px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hm || isEditingNote ? 10 : 0 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
-                    <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
-                    <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{t.quantity}주 × {fmt(t.price)}원</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, marginLeft: "auto" }}>{fmt(t.quantity * t.price)}원</span>
-                  </div>
-                  {isEditingNote ? (
-                    <div>
-                      <textarea value={noteText} onChange={(e: any) => setNoteText(e.target.value)} placeholder="매매 이유를 기록하세요..." rows={2} style={{ ...is, resize: "vertical", fontSize: 13, lineHeight: 1.6, minHeight: 50, fontFamily: "inherit" }} autoFocus />
-                      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
-                        <button onClick={() => setEditingNote(null)} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
-                        <button onClick={() => saveTradeNote(t.id)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
-                      </div>
-                    </div>
-                  ) : hm ? (
-                    <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(t.note); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}`, cursor: "pointer" }}>
-                      <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{t.note}</div>
-                    </div>
-                  ) : (
-                    <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(""); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(245,158,11,0.06)", border: "1px dashed rgba(245,158,11,0.2)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                      <IconWarn /><span style={{ fontSize: 12, color: "#fbbf24" }}>이유 미기록 — 탭하여 추가</span>
-                    </div>
-                  )}
+          {(() => {
+            const sortedAsc = [...instTrades].reverse();
+            const firstBuy = sortedAsc.find(t => t.side === "BUY" && t.note?.trim() && t.note.trim() !== "추가 매수");
+            const addBuys = instTrades.filter(t => t.note?.trim() === "추가 매수");
+            const otherTrades = instTrades.filter(t => t.id !== firstBuy?.id && t.note?.trim() !== "추가 매수");
+            return <>
+              {/* First Buy Reason - Pinned */}
+              {firstBuy && (
+                <div style={{ ...cs, marginBottom: 12, padding: "14px 18px", borderLeft: "3px solid #ef4444" }}>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 6 }}>최초 매수 이유 · {firstBuy.trade_date}</div>
+                  <div style={{ fontSize: 14, color: "#f8fafc", lineHeight: 1.6, fontWeight: 500 }}>{firstBuy.note}</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 6 }}>{firstBuy.quantity}주 × {fmt(firstBuy.price)}원 = {fmt(firstBuy.quantity * firstBuy.price)}원</div>
                 </div>
-              );
-            })}
-          </div>
+              )}
+
+              {/* 추가 매수 Summary */}
+              {addBuys.length > 0 && (
+                <div style={{ ...cs, marginBottom: 12, padding: "12px 18px" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>추가 매수 {addBuys.length}건</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {addBuys.map(t => (
+                      <div key={t.id} onClick={() => { setEditingNote(t.id); setNoteText(t.note || "추가 매수"); }} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.03)", cursor: "pointer" }}>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
+                        <span style={{ fontSize: 12, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "#e2e8f0" }}>{fmt(t.quantity * t.price)}원</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Other Trades */}
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}><IconMemo /> 매매 기록</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {otherTrades.map((t) => {
+                  const hm = !!t.note?.trim();
+                  const isEditingThis = editingNote === t.id;
+                  return (
+                    <div key={t.id} style={{ ...cs, padding: "14px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hm || isEditingThis ? 10 : 0 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
+                        <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{t.quantity}주 × {fmt(t.price)}원</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, marginLeft: "auto" }}>{fmt(t.quantity * t.price)}원</span>
+                      </div>
+                      {isEditingThis ? (
+                        <div>
+                          <textarea value={noteText} onChange={(e: any) => setNoteText(e.target.value)} placeholder="매매 이유를 기록하세요..." rows={2} style={{ ...is, resize: "vertical", fontSize: 13, lineHeight: 1.6, minHeight: 50, fontFamily: "inherit" }} autoFocus />
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                            <button onClick={() => { if (confirm("이 거래 기록을 삭제하시겠습니까?")) delTrade(t.id); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>삭제</button>
+                            <div style={{ display: "flex", gap: 8 }}>
+                              <button onClick={() => setEditingNote(null)} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
+                              <button onClick={() => saveTradeNote(t.id)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : hm ? (
+                        <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(t.note); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}`, cursor: "pointer" }}>
+                          <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{t.note}</div>
+                        </div>
+                      ) : (
+                        <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(""); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(245,158,11,0.06)", border: "1px dashed rgba(245,158,11,0.2)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                          <IconWarn /><span style={{ fontSize: 12, color: "#fbbf24" }}>이유 미기록 — 탭하여 추가</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>;
+          })()}
         </div>}
 
         {/* ============ TRADES ============ */}
