@@ -107,10 +107,12 @@ export default function Home() {
     if (v === "detail" && instId) {
       window.history.pushState(null, "", `#stock/${instId}`);
       setSelInst(instId);
+      setForm(f => ({ ...f, instrument_id: instId, quantity: "", price: "", note: "추가 매수" }));
     } else if (v === "trades") {
       window.history.pushState(null, "", "#trades");
     } else if (v === "add") {
       window.history.pushState(null, "", "#add");
+      setForm(f => { const hasBuys = trades.some(t => t.instrument_id === f.instrument_id && t.side === "BUY"); return { ...f, note: f.side === "BUY" && hasBuys && !f.note.trim() ? "추가 매수" : f.note }; });
     } else {
       window.history.pushState(null, "", window.location.pathname);
     }
@@ -345,23 +347,23 @@ export default function Home() {
     <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
 
       {/* HEADER */}
-      <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50 }}>
+      <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50, gap: 6 }}>
         {view === "detail" ? (
-          <button onClick={goBack} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#94a3b8", fontSize: 14, cursor: "pointer", padding: 0 }}><IconBack /> 뒤로</button>
+          <button onClick={goBack} style={{ display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", color: "#94a3b8", fontSize: 14, cursor: "pointer", padding: 0, whiteSpace: "nowrap" }}><IconBack /> 뒤로</button>
         ) : (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 28, height: 28, borderRadius: 7, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14 }}>📊</div>
-            <span style={{ fontSize: 16, fontWeight: 800, color: "#f8fafc" }}>주식노트</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flex: "0 0 auto" }}>
+            <div style={{ width: 26, height: 26, borderRadius: 6, background: "linear-gradient(135deg,#3b82f6,#7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>📊</div>
+            {!isMobile && <span style={{ fontSize: 16, fontWeight: 800, color: "#f8fafc" }}>주식노트</span>}
           </div>
         )}
         {view !== "detail" && (
           <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 2 }}>
             {[{ k: "dashboard", l: "보유현황" }, { k: "trades", l: "거래내역" }, { k: "add", l: "+ 기록" }].map(t => (
-              <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 12px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap" }}>{t.l}</button>
+              <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 10px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
           </div>
         )}
-        <button onClick={signOut} style={{ padding: "5px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>로그아웃</button>
+        <button onClick={signOut} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto" }}>로그아웃</button>
       </header>
 
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "16px 12px 60px" }}>
@@ -539,6 +541,27 @@ export default function Home() {
                 <span style={{ color: (dayChanges[selInstData.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>오늘 {(dayChanges[selInstData.id] || 0) >= 0 ? "+" : ""}{(dayChanges[selInstData.id] || 0).toFixed(2)}%</span>
               </div>
             )}
+          </div>
+
+          {/* Quick Trade */}
+          <div style={{ ...cs, marginBottom: 16, padding: "14px 18px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 10 }}>📝 추가 매수 기록</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+              <div style={{ flex: "1 1 80px" }}>
+                <label style={{ fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" }}>날짜</label>
+                <input type="date" value={form.trade_date} onChange={(e: any) => setForm(f => ({ ...f, trade_date: e.target.value }))} style={{ ...is, fontSize: 12, padding: "8px 10px" }} />
+              </div>
+              <div style={{ flex: "0 0 60px" }}>
+                <label style={{ fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" }}>수량</label>
+                <input type="number" placeholder="0" value={form.quantity} onChange={(e: any) => setForm(f => ({ ...f, quantity: e.target.value }))} style={{ ...is, fontSize: 12, padding: "8px 10px" }} />
+              </div>
+              <div style={{ flex: "0 0 90px" }}>
+                <label style={{ fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" }}>단가</label>
+                <input type="number" placeholder="0" value={form.price} onChange={(e: any) => setForm(f => ({ ...f, price: e.target.value }))} style={{ ...is, fontSize: 12, padding: "8px 10px" }} />
+              </div>
+              <button onClick={async () => { if (!form.quantity || !form.price || !selInst) return; const { data } = await supabase.from("trades").insert({ instrument_id: selInst, trade_date: form.trade_date, side: "BUY", quantity: parseInt(form.quantity), price: parseInt(form.price), note: "추가 매수", user_id: user.id }).select().single(); if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "" })); loadData(); } }} disabled={!form.quantity || !form.price} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: form.quantity && form.price ? "#ef4444" : "rgba(255,255,255,0.05)", color: form.quantity && form.price ? "#fff" : "#475569", fontSize: 12, fontWeight: 700, cursor: form.quantity && form.price ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}>매수</button>
+            </div>
+            {form.quantity && form.price && <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>총 {fmt(parseInt(form.quantity) * parseInt(form.price))}원</div>}
           </div>
 
           {/* Instrument Memo */}
