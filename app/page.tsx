@@ -613,7 +613,7 @@ export default function Home() {
                 <span>평균단가 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.avgPrice)}원</b></span>
                 <span>보유 <b style={{ color: "#e2e8f0" }}>{selPos.totalQty}주</b></span>
                 <span>{holdingWeeks(selPos.firstBuyDate)}</span>
-                <span style={{ color: (dayChanges[selInstData.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>오늘 {(dayChanges[selInstData.id] || 0) >= 0 ? "+" : ""}{(dayChanges[selInstData.id] || 0).toFixed(2)}%</span>
+                <span style={{ color: (dayChanges[selInstData.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>오늘 {selPos.currentPrice > 0 ? fmt(Math.abs(Math.round(selPos.currentPrice * (dayChanges[selInstData.id] || 0) / (100 + (dayChanges[selInstData.id] || 0))))) + "원" : ""} ({(dayChanges[selInstData.id] || 0) >= 0 ? "+" : ""}{(dayChanges[selInstData.id] || 0).toFixed(1)}%) {(dayChanges[selInstData.id] || 0) >= 0 ? "상승" : "하락"}</span>
               </div>
             )}
           </div>
@@ -621,17 +621,24 @@ export default function Home() {
           {/* Drop Levels from High */}
           {chartHigh > 0 && selPos && (
             <div style={{ ...cs, marginBottom: 8, padding: "10px 14px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>매수 후 고점 <b style={{ color: "#ef4444" }}>{fmt(chartHigh)}원</b></span>
-                <span style={{ fontSize: 11, color: selPos.currentPrice >= chartHigh ? "#ef4444" : "#3b82f6" }}>현재 {selPos.currentPrice >= chartHigh ? "고점" : `${((selPos.currentPrice / chartHigh - 1) * 100).toFixed(1)}%`}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12 }}>
+                <span style={{ color: "#94a3b8", fontWeight: 600 }}>매수 후 고점 <b style={{ color: "#ef4444" }}>{fmt(chartHigh)}원</b></span>
+                <span style={{ color: "#475569" }}>|</span>
+                <span style={{ fontWeight: 600 }}>현재 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.currentPrice)}원</b></span>
+                <span style={{ color: selPos.currentPrice >= chartHigh ? "#ef4444" : "#3b82f6", fontWeight: 700 }}>({selPos.currentPrice >= chartHigh ? "고점" : `${((selPos.currentPrice / chartHigh - 1) * 100).toFixed(1)}%`})</span>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {[-7, -10, -12, -15].map(pct => {
                   const price = Math.round(chartHigh * (1 + pct / 100));
-                  const isBelowCurrent = selPos.currentPrice <= price;
+                  const isReached = selPos.currentPrice <= price;
+                  const isCurrentLevel = isReached && (pct === -7 || selPos.currentPrice <= Math.round(chartHigh * (1 + pct / 100)));
+                  const nextPct = [-7, -10, -12, -15][[-7, -10, -12, -15].indexOf(pct) - 1];
+                  const nextPrice = nextPct ? Math.round(chartHigh * (1 + nextPct / 100)) : chartHigh;
+                  const isExactLevel = isReached && selPos.currentPrice > (pct === -15 ? 0 : Math.round(chartHigh * (1 + ([-7,-10,-12,-15][[-7,-10,-12,-15].indexOf(pct) + 1] || -100) / 100)));
                   return (
-                    <div key={pct} style={{ padding: "4px 10px", borderRadius: 6, background: isBelowCurrent ? "rgba(239,68,68,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${isBelowCurrent ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.05)"}`, fontSize: 11 }}>
-                      <span style={{ color: "#64748b" }}>{pct}%</span> <span style={{ color: isBelowCurrent ? "#f87171" : "#e2e8f0", fontWeight: 600 }}>{fmt(price)}원</span>
+                    <div key={pct} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 11, background: isReached ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${isExactLevel ? "#ef4444" : isReached ? "rgba(239,68,68,0.3)" : "rgba(255,255,255,0.05)"}`, position: "relative" }}>
+                      {isExactLevel && <span style={{ position: "absolute", top: -6, right: -4, fontSize: 8, background: "#ef4444", color: "#fff", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>도달</span>}
+                      <span style={{ color: isReached ? "#f87171" : "#64748b", fontWeight: isReached ? 700 : 500 }}>{pct}%</span> <span style={{ color: isReached ? "#f87171" : "#e2e8f0", fontWeight: 600 }}>{fmt(price)}원</span>
                     </div>
                   );
                 })}
