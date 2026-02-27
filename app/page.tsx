@@ -111,7 +111,7 @@ export default function Home() {
       const pos = positions.find((p: any) => p.id === selInst);
       const firstBuyDate = pos?.firstBuyDate || "";
       const dataSinceBuy = firstBuyDate ? data.filter((d: any) => d.time >= firstBuyDate) : data;
-      const high = dataSinceBuy.length > 0 ? Math.max(...dataSinceBuy.map((d: any) => d.high)) : 0;
+      const high = dataSinceBuy.length > 0 ? Math.max(...dataSinceBuy.map((d: any) => d.close)) : 0;
       setChartHigh(high);
 
       if (chartInstanceRef.current) { chartInstanceRef.current.remove(); chartInstanceRef.current = null; }
