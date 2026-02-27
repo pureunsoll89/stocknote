@@ -75,6 +75,7 @@ export default function Home() {
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
+  const [chartHigh, setChartHigh] = useState<number>(0);
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -102,9 +103,16 @@ export default function Home() {
       if (cancelled) return;
       const LWC = (window as any).LightweightCharts;
 
-      const res = await fetch(`/api/chart?symbol=${symbol}&type=${chartType}&count=${chartType === "month" ? "60" : "120"}`);
+      const res = await fetch(`/api/chart?symbol=${symbol}&type=${chartType}&count=${chartType === "month" ? "120" : chartType === "week" ? "150" : "250"}`);
       const data = await res.json();
       if (cancelled || !data.length) return;
+
+      // Calculate high since first buy
+      const pos = positions.find((p: any) => p.id === selInst);
+      const firstBuyDate = pos?.firstBuyDate || "";
+      const dataSinceBuy = firstBuyDate ? data.filter((d: any) => d.time >= firstBuyDate) : data;
+      const high = dataSinceBuy.length > 0 ? Math.max(...dataSinceBuy.map((d: any) => d.high)) : 0;
+      setChartHigh(high);
 
       if (chartInstanceRef.current) { chartInstanceRef.current.remove(); chartInstanceRef.current = null; }
       chartRef.current!.innerHTML = "";
@@ -609,6 +617,27 @@ export default function Home() {
               </div>
             )}
           </div>
+
+          {/* Drop Levels from High */}
+          {chartHigh > 0 && selPos && (
+            <div style={{ ...cs, marginBottom: 8, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>매수 후 고점 <b style={{ color: "#ef4444" }}>{fmt(chartHigh)}원</b></span>
+                <span style={{ fontSize: 11, color: selPos.currentPrice >= chartHigh ? "#ef4444" : "#3b82f6" }}>현재 {selPos.currentPrice >= chartHigh ? "고점" : `${((selPos.currentPrice / chartHigh - 1) * 100).toFixed(1)}%`}</span>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[-7, -10, -12, -15].map(pct => {
+                  const price = Math.round(chartHigh * (1 + pct / 100));
+                  const isBelowCurrent = selPos.currentPrice <= price;
+                  return (
+                    <div key={pct} style={{ padding: "4px 10px", borderRadius: 6, background: isBelowCurrent ? "rgba(239,68,68,0.08)" : "rgba(255,255,255,0.03)", border: `1px solid ${isBelowCurrent ? "rgba(239,68,68,0.2)" : "rgba(255,255,255,0.05)"}`, fontSize: 11 }}>
+                      <span style={{ color: "#64748b" }}>{pct}%</span> <span style={{ color: isBelowCurrent ? "#f87171" : "#e2e8f0", fontWeight: 600 }}>{fmt(price)}원</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Chart */}
           <div style={{ ...cs, marginBottom: 16, padding: "12px 14px" }}>
