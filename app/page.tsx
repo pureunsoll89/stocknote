@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -72,6 +72,7 @@ export default function Home() {
   const [noteText, setNoteText] = useState("");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(false);
+  const [chartPeriod, setChartPeriod] = useState<"day"|"week"|"month">("day");
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -543,35 +544,108 @@ export default function Home() {
             )}
           </div>
 
-          {/* TradingView Chart */}
-          <div style={{ ...cs, marginBottom: 16, padding: 0, overflow: "hidden" }}>
-            <div id={`tv-chart-${selInstData.id}`} style={{ height: isMobile ? 300 : 400 }} ref={(el) => {
-              if (!el || el.childElementCount > 0) return;
-              const script = document.createElement("script");
-              script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
-              script.async = true;
-              script.innerHTML = JSON.stringify({
-                symbol: `KRX:${selInstData.symbol}`,
-                width: "100%",
-                height: "100%",
-                theme: "dark",
-                style: "1",
-                locale: "kr",
-                toolbar_bg: "#080c14",
-                enable_publishing: false,
-                hide_top_toolbar: false,
-                hide_legend: true,
-                save_image: false,
-                hide_volume: false,
-                backgroundColor: "rgba(8, 12, 20, 1)",
-                gridColor: "rgba(255, 255, 255, 0.03)",
-                allow_symbol_change: false,
-                interval: "D",
-                range: "3M"
-              });
-              el.appendChild(script);
-            }} />
-          </div>
+          {/* Chart */}
+          {(() => {
+            const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
+            const chartRef = useRef<HTMLDivElement>(null);
+            const chartInstanceRef = useRef<any>(null);
+
+            useEffect(() => {
+              if (!chartRef.current || !selInstData) return;
+              let cancelled = false;
+
+              const loadChart = async () => {
+                // Load lightweight-charts via script if not loaded
+                if (!(window as any).LightweightCharts) {
+                  await new Promise<void>((resolve) => {
+                    const s = document.createElement("script");
+                    s.src = "https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js";
+                    s.onload = () => resolve();
+                    document.head.appendChild(s);
+                  });
+                }
+                if (cancelled) return;
+                const LWC = (window as any).LightweightCharts;
+
+                const res = await fetch(`/api/chart?symbol=${selInstData.symbol}&type=${chartType}&count=${chartType === "month" ? "60" : "120"}`);
+                const data = await res.json();
+                if (cancelled || !data.length) return;
+
+                // Clear previous
+                if (chartInstanceRef.current) { chartInstanceRef.current.remove(); chartInstanceRef.current = null; }
+                chartRef.current!.innerHTML = "";
+
+                const chart = LWC.createChart(chartRef.current!, {
+                  width: chartRef.current!.clientWidth,
+                  height: isMobile ? 280 : 380,
+                  layout: { background: { type: "solid", color: "#0a0e18" }, textColor: "#94a3b8", fontSize: 11 },
+                  grid: { vertLines: { color: "rgba(255,255,255,0.03)" }, horzLines: { color: "rgba(255,255,255,0.03)" } },
+                  crosshair: { mode: 0 },
+                  rightPriceScale: { borderColor: "rgba(255,255,255,0.06)" },
+                  timeScale: { borderColor: "rgba(255,255,255,0.06)", timeVisible: false },
+                });
+                chartInstanceRef.current = chart;
+
+                // Candle — Korean style: red up, blue down
+                const candle = chart.addCandlestickSeries({
+                  upColor: "#ef4444", downColor: "#3b82f6",
+                  borderUpColor: "#ef4444", borderDownColor: "#3b82f6",
+                  wickUpColor: "#ef4444", wickDownColor: "#3b82f6",
+                });
+                candle.setData(data.map((d: any) => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })));
+
+                // Volume
+                const vol = chart.addHistogramSeries({
+                  priceFormat: { type: "volume" },
+                  priceScaleId: "vol",
+                });
+                vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+                vol.setData(data.map((d: any) => ({ time: d.time, value: d.volume, color: d.close >= d.open ? "rgba(239,68,68,0.2)" : "rgba(59,130,246,0.2)" })));
+
+                // MA5
+                const ma5 = chart.addLineSeries({ color: "#f59e0b", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+                const ma5Data = data.map((d: any, i: number, arr: any[]) => {
+                  if (i < 4) return null;
+                  const avg = (arr[i].close + arr[i-1].close + arr[i-2].close + arr[i-3].close + arr[i-4].close) / 5;
+                  return { time: d.time, value: Math.round(avg) };
+                }).filter(Boolean);
+                ma5.setData(ma5Data);
+
+                // MA20
+                const ma20 = chart.addLineSeries({ color: "#8b5cf6", lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+                const ma20Data = data.map((d: any, i: number, arr: any[]) => {
+                  if (i < 19) return null;
+                  let sum = 0; for (let j = 0; j < 20; j++) sum += arr[i-j].close;
+                  return { time: d.time, value: Math.round(sum / 20) };
+                }).filter(Boolean);
+                ma20.setData(ma20Data);
+
+                chart.timeScale().fitContent();
+
+                const ro = new ResizeObserver(() => { if (chartRef.current) chart.applyOptions({ width: chartRef.current.clientWidth }); });
+                ro.observe(chartRef.current!);
+                return () => ro.disconnect();
+              };
+
+              loadChart();
+              return () => { cancelled = true; };
+            }, [selInstData?.symbol, chartType, isMobile]);
+
+            return (
+              <div style={{ ...cs, marginBottom: 16, padding: "12px 14px" }}>
+                <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                  {([["day","일봉"],["week","주봉"],["month","월봉"]] as const).map(([k,l]) => (
+                    <button key={k} onClick={() => setChartType(k)} style={{ padding: "4px 12px", borderRadius: 6, border: "none", fontSize: 12, fontWeight: chartType === k ? 700 : 500, background: chartType === k ? "rgba(255,255,255,0.08)" : "transparent", color: chartType === k ? "#f1f5f9" : "#64748b", cursor: "pointer" }}>{l}</button>
+                  ))}
+                  <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center", fontSize: 10 }}>
+                    <span style={{ color: "#f59e0b" }}>● MA5</span>
+                    <span style={{ color: "#8b5cf6" }}>● MA20</span>
+                  </div>
+                </div>
+                <div ref={chartRef} />
+              </div>
+            );
+          })()}
 
           {/* Quick Trade */}
           <div style={{ ...cs, marginBottom: 16, padding: "14px 18px" }}>
