@@ -543,6 +543,36 @@ export default function Home() {
             )}
           </div>
 
+          {/* TradingView Chart */}
+          <div style={{ ...cs, marginBottom: 16, padding: 0, overflow: "hidden" }}>
+            <div id={`tv-chart-${selInstData.id}`} style={{ height: isMobile ? 300 : 400 }} ref={(el) => {
+              if (!el || el.childElementCount > 0) return;
+              const script = document.createElement("script");
+              script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+              script.async = true;
+              script.innerHTML = JSON.stringify({
+                symbol: `KRX:${selInstData.symbol}`,
+                width: "100%",
+                height: "100%",
+                theme: "dark",
+                style: "1",
+                locale: "kr",
+                toolbar_bg: "#080c14",
+                enable_publishing: false,
+                hide_top_toolbar: false,
+                hide_legend: true,
+                save_image: false,
+                hide_volume: false,
+                backgroundColor: "rgba(8, 12, 20, 1)",
+                gridColor: "rgba(255, 255, 255, 0.03)",
+                allow_symbol_change: false,
+                interval: "D",
+                range: "3M"
+              });
+              el.appendChild(script);
+            }} />
+          </div>
+
           {/* Quick Trade */}
           <div style={{ ...cs, marginBottom: 16, padding: "14px 18px" }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 10 }}>📝 추가 매수 기록</div>
