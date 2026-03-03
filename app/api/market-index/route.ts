@@ -18,7 +18,7 @@ export async function GET() {
             { headers: { "User-Agent": "Mozilla/5.0" } }
           );
           const text = await res.text();
-          const matches = [...text.matchAll(/data="([^"]+)"/g)];
+          const matches = Array.from(text.matchAll(/data="([^"]+)"/g));
           if (matches.length >= 2) {
             const prev = Number(matches[matches.length - 2][1].split("|")[4]);
             const curr = Number(matches[matches.length - 1][1].split("|")[4]);
