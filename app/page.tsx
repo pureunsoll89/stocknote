@@ -31,7 +31,7 @@ function calculatePosition(trades: Trade[], market?: string) {
 }
 
 function holdingDays(d: string) { return d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0; }
-function holdingWeeks(d: string) { const days = holdingDays(d); const w = Math.floor(days / 7); const r = days % 7; if (w === 0) return `${r}일`; return `${w}주 ${r}일`; }
+function holdingWeeks(d: string) { const days = holdingDays(d); const w = Math.floor(days / 7); const r = days % 7; if (w === 0) return `${days}일`; return `${w}주 ${r}일 (${days}일)`; }
 function getAlertLevel(r: number) { return r >= 0.05 ? "OUTPERFORM" : r >= -0.05 ? "NORMAL" : r >= -0.12 ? "WARNING" : "DANGER"; }
 function fmt(n: number) { return new Intl.NumberFormat("ko-KR").format(n); }
 const BENCH_RET: Record<string, number> = { KOSPI: 0.054, KOSDAQ: 0.038 };
@@ -358,16 +358,23 @@ export default function Home() {
     return { ...inst, ...pos, currentPrice: cp, stockReturn: stockRet, benchReturn: br, relativeReturn: rr, alertLevel: getAlertLevel(rr), evalAmount: cp * pos.totalQty, unrealizedPnl: (cp - pos.avgPrice) * pos.totalQty, tradeCount: it.length, noMemoCount: noMemo, firstMemo: fm?.note || "" };
   }).filter(Boolean) as any[], [instruments, trades, currentPrices]);
 
+  const allRealizedPnl = useMemo(() => instruments.reduce((sum: number, inst: any) => {
+    const it = trades.filter((t: any) => t.instrument_id === inst.id); if (!it.length) return sum;
+    const isETF = inst.name.startsWith("KODEX") || inst.name.startsWith("TIGER") || inst.name.startsWith("ARIRANG") || inst.name.startsWith("KBSTAR") || inst.name.startsWith("SOL") || inst.name.startsWith("ACE") || inst.name.startsWith("HANARO");
+    const pos = calculatePosition(it, isETF ? "ETF" : inst.market);
+    return sum + pos.realizedPnl;
+  }, 0), [instruments, trades]);
+
   const totals = useMemo(() => {
     const totalInvested = positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
     const totalEval = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
     const totalUnrealized = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
-    const totalRealized = positions.reduce((s: number, p: any) => s + p.realizedPnl, 0);
+    const totalRealized = allRealizedPnl;
     const totalTrades = trades.length;
     const noMemo = trades.filter(t => !t.note?.trim()).length;
     const totalReturnRate = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
     return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
-  }, [positions, trades]);
+  }, [positions, trades, allRealizedPnl]);
 
   const instTrades = useMemo(() => selInst ? trades.filter(t => t.instrument_id === selInst).sort((a, b) => { const d = new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime(); return d !== 0 ? d : a.id.localeCompare(b.id); }) : [], [trades, selInst]);
   const selPos = positions.find((p: any) => p.id === selInst);
@@ -740,7 +747,19 @@ export default function Home() {
                 <div style={{ ...cs, marginBottom: 12, padding: "12px 18px" }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>추가 매수 {addBuys.length}건</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    {addBuys.map(t => (
+                    {addBuys.map(t => editingNote === t.id ? (
+                      <div key={t.id} style={{ padding: "8px 0" }}>
+                        <textarea value={noteText} onChange={(e: any) => setNoteText(e.target.value)} rows={2} style={{ ...is, resize: "vertical", fontSize: 13, lineHeight: 1.6, minHeight: 40, fontFamily: "inherit", marginBottom: 6 }} autoFocus />
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <button onClick={() => { if (confirm("이 거래 기록을 삭제하시겠습니까?")) delTrade(t.id); }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>삭제</button>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button onClick={() => setEditingNote(null)} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
+                            <button onClick={() => saveTradeNote(t.id)} style={{ padding: "4px 10px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>{t.trade_date} · {t.quantity}주 × {fmt(t.price)}원 = {fmt(t.quantity * t.price)}원</div>
+                      </div>
+                    ) : (
                       <div key={t.id} onClick={() => { setEditingNote(t.id); setNoteText(t.note || "추가 매수"); }} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.03)", cursor: "pointer" }}>
                         <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
                         <span style={{ fontSize: 12, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>

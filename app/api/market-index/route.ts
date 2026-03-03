@@ -2,17 +2,58 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
-    const [kospiRes, kosdaqRes] = await Promise.all([
-      fetch("https://m.stock.naver.com/api/index/KOSPI/basic", { headers: { "User-Agent": "Mozilla/5.0" } }),
-      fetch("https://m.stock.naver.com/api/index/KOSDAQ/basic", { headers: { "User-Agent": "Mozilla/5.0" } }),
-    ]);
-    const kospi = await kospiRes.json();
-    const kosdaq = await kosdaqRes.json();
-    return NextResponse.json({
-      KOSPI: { price: kospi?.closePrice, change: kospi?.compareToPreviousClosePrice, changeRate: parseFloat(kospi?.fluctuationsRatio || "0") },
-      KOSDAQ: { price: kosdaq?.closePrice, change: kosdaq?.compareToPreviousClosePrice, changeRate: parseFloat(kosdaq?.fluctuationsRatio || "0") },
-    }, { headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=120" } });
+    const indices: Record<string, { changeRate: number }> = {};
+
+    // KOSPI: 0001, KOSDAQ: 1001
+    const symbols = [
+      { key: "KOSPI", code: "KOSPI" },
+      { key: "KOSDAQ", code: "KOSDAQ" },
+    ];
+
+    await Promise.all(
+      symbols.map(async ({ key, code }) => {
+        try {
+          const res = await fetch(
+            `https://fchart.stock.naver.com/sise.nhn?symbol=${code}&timeframe=day&count=2&requestType=0`,
+            { headers: { "User-Agent": "Mozilla/5.0" } }
+          );
+          const text = await res.text();
+          const matches = [...text.matchAll(/data="([^"]+)"/g)];
+          if (matches.length >= 2) {
+            const prev = Number(matches[matches.length - 2][1].split("|")[4]);
+            const curr = Number(matches[matches.length - 1][1].split("|")[4]);
+            if (prev > 0) {
+              indices[key] = { changeRate: ((curr - prev) / prev) * 100 };
+            }
+          }
+        } catch (e) {}
+      })
+    );
+
+    // Fallback: try Naver finance page
+    if (!indices["KOSPI"] || !indices["KOSDAQ"]) {
+      try {
+        const res = await fetch("https://finance.naver.com/sise/", {
+          headers: { "User-Agent": "Mozilla/5.0" },
+        });
+        const html = await res.text();
+
+        const kospiMatch = html.match(/KOSPI.*?change_rate.*?([+-]?\d+\.\d+)%/s);
+        const kosdaqMatch = html.match(/KOSDAQ.*?change_rate.*?([+-]?\d+\.\d+)%/s);
+
+        if (kospiMatch && !indices["KOSPI"]) {
+          indices["KOSPI"] = { changeRate: parseFloat(kospiMatch[1]) };
+        }
+        if (kosdaqMatch && !indices["KOSDAQ"]) {
+          indices["KOSDAQ"] = { changeRate: parseFloat(kosdaqMatch[1]) };
+        }
+      } catch (e) {}
+    }
+
+    return NextResponse.json(indices, {
+      headers: { "Cache-Control": "s-maxage=120, stale-while-revalidate=300" },
+    });
   } catch (e) {
-    return NextResponse.json({ KOSPI: { changeRate: 0 }, KOSDAQ: { changeRate: 0 } });
+    return NextResponse.json({}, { status: 500 });
   }
 }
