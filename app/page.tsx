@@ -600,9 +600,14 @@ export default function Home() {
           {/* Header Card */}
           <div style={{ ...cs, marginBottom: 16, padding: "20px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 2 }}>{selInstData.name}</div>
-                <div style={{ fontSize: 12, color: "#64748b" }}>{selInstData.symbol} · {selInstData.market}</div>
+              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                <div style={{ flex: "0 0 44px" }}>
+                  <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${selInstData.symbol}.png`} alt={selInstData.name} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 44, height: 44, borderRadius: 10 }} /><div style={{ width: 44, height: 44, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#94a3b8" }}>{selInstData.name.slice(0,2)}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 2 }}>{selInstData.name}</div>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>{selInstData.symbol} · {selInstData.market}</div>
+                </div>
               </div>
               {selPos && (
                 <div style={{ textAlign: "right" }}>
@@ -646,6 +651,34 @@ export default function Home() {
                     <div key={pct} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 11, background: isReached ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${isExactLevel ? "#ef4444" : isReached ? "rgba(239,68,68,0.3)" : "rgba(255,255,255,0.05)"}`, position: "relative" }}>
                       {isExactLevel && <span style={{ position: "absolute", top: -6, right: -4, fontSize: 8, background: "#ef4444", color: "#fff", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>도달</span>}
                       <span style={{ color: isReached ? "#f87171" : "#64748b", fontWeight: isReached ? 700 : 500 }}>{pct}%</span> <span style={{ color: isReached ? "#f87171" : "#e2e8f0", fontWeight: 600 }}>{fmt(price)}원</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Drop Levels from Avg Price */}
+          {selPos && selPos.avgPrice > 0 && selPos.currentPrice > 0 && (
+            <div style={{ ...cs, marginBottom: 8, padding: "10px 14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12 }}>
+                <span style={{ color: "#94a3b8", fontWeight: 600 }}>평균단가 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.avgPrice)}원</b></span>
+                <span style={{ color: "#475569" }}>|</span>
+                <span style={{ fontWeight: 600 }}>현재 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.currentPrice)}원</b></span>
+                <span style={{ color: selPos.currentPrice >= selPos.avgPrice ? "#ef4444" : "#3b82f6", fontWeight: 700 }}>({selPos.currentPrice >= selPos.avgPrice ? "+" : ""}{((selPos.currentPrice / selPos.avgPrice - 1) * 100).toFixed(1)}%)</span>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[-7, -10, -12, -15].map(pct => {
+                  const price = Math.round(selPos.avgPrice * (1 + pct / 100));
+                  const isReached = selPos.currentPrice <= price;
+                  const levels = [-7, -10, -12, -15];
+                  const idx = levels.indexOf(pct);
+                  const nextLevelPrice = idx < levels.length - 1 ? Math.round(selPos.avgPrice * (1 + levels[idx + 1] / 100)) : 0;
+                  const isExactLevel = isReached && selPos.currentPrice > nextLevelPrice;
+                  return (
+                    <div key={pct} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 11, background: isReached ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${isExactLevel ? "#3b82f6" : isReached ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.05)"}`, position: "relative" }}>
+                      {isExactLevel && <span style={{ position: "absolute", top: -6, right: -4, fontSize: 8, background: "#3b82f6", color: "#fff", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>도달</span>}
+                      <span style={{ color: isReached ? "#60a5fa" : "#64748b", fontWeight: isReached ? 700 : 500 }}>{pct}%</span> <span style={{ color: isReached ? "#60a5fa" : "#e2e8f0", fontWeight: 600 }}>{fmt(price)}원</span>
                     </div>
                   );
                 })}
