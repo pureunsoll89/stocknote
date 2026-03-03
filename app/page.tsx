@@ -31,7 +31,7 @@ function calculatePosition(trades: Trade[], market?: string) {
 }
 
 function holdingDays(d: string) { return d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0; }
-function holdingWeeks(d: string) { const days = holdingDays(d); const w = Math.floor(days / 7); const r = days % 7; if (w === 0) return `${days}일`; return `${w}주 ${r}일 (${days}일)`; }
+function holdingWeeks(d: string) { return `${holdingDays(d)}일`; }
 function getAlertLevel(r: number) { return r >= 0.05 ? "OUTPERFORM" : r >= -0.05 ? "NORMAL" : r >= -0.12 ? "WARNING" : "DANGER"; }
 function fmt(n: number) { return new Intl.NumberFormat("ko-KR").format(n); }
 const BENCH_RET: Record<string, number> = { KOSPI: 0.054, KOSDAQ: 0.038 };
