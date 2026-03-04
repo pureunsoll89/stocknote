@@ -29,7 +29,7 @@ export async function GET() {
     { key: "brent", symbol: "BZ=F", name: "브렌트유", unit: "$" },
     { key: "vix", symbol: "^VIX", name: "VIX 공포지수", unit: "" },
     { key: "sox", symbol: "^SOX", name: "필라델피아 반도체", unit: "" },
-    { key: "gold", symbol: "GC=F", name: "금", unit: "$" },
+    { key: "gold", symbol: "GC=F", name: "금", unit: "원" },
   ];
 
   const results: Record<string, any> = {};
@@ -37,9 +37,17 @@ export async function GET() {
   await Promise.all(
     symbols.map(async ({ key, symbol, name, unit }) => {
       const data = await fetchYahoo(symbol);
-      results[key] = { name, unit, ...(data || { price: 0, change: 0 }) };
+      results[key] = { name, unit, yahooSymbol: symbol, ...(data || { price: 0, change: 0 }) };
     })
   );
+
+  // Convert gold to KRW (troy oz -> gram, then to KRW)
+  if (results["gold"]?.price && results["usdkrw"]?.price) {
+    const usdPrice = results["gold"].price;
+    const krwRate = results["usdkrw"].price;
+    // 1 troy oz = 31.1035g, convert to per gram in KRW
+    results["gold"].priceKrw = Math.round((usdPrice / 31.1035) * krwRate);
+  }
 
   return NextResponse.json(results, {
     headers: { "Cache-Control": "s-maxage=300, stale-while-revalidate=600" },

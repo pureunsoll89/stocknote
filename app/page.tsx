@@ -66,6 +66,9 @@ export default function Home() {
   const [marketIndex, setMarketIndex] = useState<Record<string, { changeRate: number }>>({});
   const [dayChanges, setDayChanges] = useState<Record<string, number>>({});
   const [globalData, setGlobalData] = useState<Record<string, any>>({});
+  const [globalSel, setGlobalSel] = useState<string|null>(null);
+  const globalChartRef = useRef<HTMLDivElement>(null);
+  const globalChartInstanceRef = useRef<any>(null);
   const [user, setUser] = useState<any>(null);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -215,6 +218,55 @@ export default function Home() {
       fetch("/api/global-indicators").then(r => r.json()).then(d => setGlobalData(d)).catch(() => {});
     }
   }, [view]);
+
+  useEffect(() => {
+    if (!globalChartRef.current || !globalSel || !globalData[globalSel]) return;
+    let cancelled = false;
+    const yahooSymbol = globalData[globalSel].yahooSymbol;
+    if (!yahooSymbol) return;
+
+    const loadGlobalChart = async () => {
+      if (!(window as any).LightweightCharts) {
+        await new Promise<void>((resolve) => {
+          const s = document.createElement("script");
+          s.src = "https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js";
+          s.onload = () => resolve();
+          document.head.appendChild(s);
+        });
+      }
+      if (cancelled) return;
+      const LWC = (window as any).LightweightCharts;
+
+      const res = await fetch(`/api/global-chart?symbol=${encodeURIComponent(yahooSymbol)}&range=6mo`);
+      const data = await res.json();
+      if (cancelled || !data.length) return;
+
+      if (globalChartInstanceRef.current) { globalChartInstanceRef.current.remove(); globalChartInstanceRef.current = null; }
+      globalChartRef.current!.innerHTML = "";
+
+      const chart = LWC.createChart(globalChartRef.current!, {
+        width: globalChartRef.current!.clientWidth,
+        height: isMobile ? 250 : 350,
+        layout: { background: { type: "solid", color: "#0a0e18" }, textColor: "#94a3b8", fontSize: 11 },
+        grid: { vertLines: { color: "rgba(255,255,255,0.03)" }, horzLines: { color: "rgba(255,255,255,0.03)" } },
+        crosshair: { mode: 0 },
+        rightPriceScale: { borderColor: "rgba(255,255,255,0.06)" },
+        timeScale: { borderColor: "rgba(255,255,255,0.06)", timeVisible: false },
+      });
+      globalChartInstanceRef.current = chart;
+
+      const line = chart.addLineSeries({ color: "#a78bfa", lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
+      line.setData(data.map((d: any) => ({ time: d.time, value: d.close })));
+      chart.timeScale().fitContent();
+
+      const ro = new ResizeObserver(() => { if (globalChartRef.current) chart.applyOptions({ width: globalChartRef.current.clientWidth }); });
+      ro.observe(globalChartRef.current!);
+    };
+
+    loadGlobalChart();
+    return () => { cancelled = true; if (globalChartInstanceRef.current) { globalChartInstanceRef.current.remove(); globalChartInstanceRef.current = null; } };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalSel, globalData]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -925,7 +977,7 @@ export default function Home() {
           <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 16 }}>국제 지표</div>
           {Object.keys(globalData).length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b" }}>로딩 중...</div>
-          ) : (
+          ) : (<>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {[
                 { key: "usdkrw", icon: "💱", desc: "원/달러 환율" },
@@ -940,23 +992,31 @@ export default function Home() {
                 const isUp = d.change >= 0;
                 const isVix = key === "vix";
                 const vixLevel = isVix ? (d.price >= 30 ? "극도의 공포" : d.price >= 20 ? "불안" : "안정") : "";
+                const isSel = globalSel === key;
+                const isGold = key === "gold";
                 return (
-                  <div key={key} style={{ ...cs, padding: "14px 16px" }}>
+                  <div key={key} onClick={() => setGlobalSel(isSel ? null : key)} style={{ ...cs, padding: "14px 16px", cursor: "pointer", border: isSel ? "1px solid rgba(124,58,237,0.4)" : "1px solid rgba(255,255,255,0.05)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
                       <div style={{ fontSize: 13, fontWeight: 700 }}>{icon} {d.name}</div>
                       <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: isUp ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)", color: isUp ? "#ef4444" : "#3b82f6" }}>{isUp ? "▲" : "▼"} {Math.abs(d.change)}%</span>
                     </div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: "#f8fafc" }}>
-                      {d.unit === "원" ? fmt(Math.round(d.price)) : d.unit === "%" ? d.price.toFixed(2) : d.unit === "$" ? `$${fmt(Math.round(d.price * 100) / 100)}` : fmt(Math.round(d.price * 100) / 100)}
-                      {d.unit === "원" && <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원</span>}
-                      {d.unit === "%" && <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>%</span>}
+                      {isGold && d.priceKrw ? <>{fmt(d.priceKrw)}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원/g</span></> : d.unit === "원" ? <>{fmt(Math.round(d.price))}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원</span></> : d.unit === "%" ? <>{d.price.toFixed(2)}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>%</span></> : d.unit === "$" ? <>${fmt(Math.round(d.price * 100) / 100)}</> : <>{fmt(Math.round(d.price * 100) / 100)}</>}
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{isVix ? vixLevel : desc}</div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{isVix ? vixLevel : desc}{isGold && d.priceKrw ? ` · $${fmt(Math.round(d.price))}/oz` : ""}</div>
                   </div>
                 );
               })}
             </div>
-          )}
+
+            {/* Global Chart */}
+            {globalSel && globalData[globalSel] && (
+              <div style={{ ...cs, marginTop: 12, padding: "12px 14px" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{globalData[globalSel].name} 차트 (6개월)</div>
+                <div ref={globalChartRef} />
+              </div>
+            )}
+          </>)}
         </div>}
 
         {/* ============ ADD TRADE ============ */}
