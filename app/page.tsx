@@ -12,8 +12,8 @@ interface Instrument { id: string; symbol: string; name: string; market: string;
 interface Trade { id: string; instrument_id: string; trade_date: string; side: string; quantity: number; price: number; fee: number; note: string; }
 
 function calculatePosition(trades: Trade[], market?: string) {
-  let totalBuyQty = 0, totalBuyAmt = 0, totalSellQty = 0, realizedPnl = 0, firstBuyDate = "";
-  const isETF = market === "ETF" || (trades.length > 0 && trades[0].instrument_id && false);
+  let totalBuyQty = 0, totalBuyAmt = 0, realizedPnl = 0, firstBuyDate = "";
+  const isETF = market === "ETF";
   const sellFeeRate = isETF ? 0.0003 : 0.0021;
   const sorted = [...trades].sort((a, b) => new Date(a.trade_date).getTime() - new Date(b.trade_date).getTime());
   for (const t of sorted) {
@@ -24,10 +24,16 @@ function calculatePosition(trades: Trade[], market?: string) {
       const avg = totalBuyQty > 0 ? totalBuyAmt / totalBuyQty : 0;
       const sellAmount = t.price * t.quantity;
       const sellFee = Math.round(sellAmount * sellFeeRate);
-      realizedPnl += (t.price - avg) * t.quantity - sellFee; totalSellQty += t.quantity;
+      realizedPnl += (t.price - avg) * t.quantity - sellFee;
+      totalBuyQty -= t.quantity;
+      totalBuyAmt = totalBuyQty > 0 ? avg * totalBuyQty : 0;
+      // Position closed — reset for new position
+      if (totalBuyQty <= 0) {
+        totalBuyQty = 0; totalBuyAmt = 0; firstBuyDate = "";
+      }
     }
   }
-  return { totalQty: totalBuyQty - totalSellQty, avgPrice: totalBuyQty > 0 ? Math.round(totalBuyAmt / totalBuyQty) : 0, realizedPnl: Math.round(realizedPnl), firstBuyDate };
+  return { totalQty: totalBuyQty, avgPrice: totalBuyQty > 0 ? Math.round(totalBuyAmt / totalBuyQty) : 0, realizedPnl: Math.round(realizedPnl), firstBuyDate };
 }
 
 function holdingDays(d: string) { return d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0; }
