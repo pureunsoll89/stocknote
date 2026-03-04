@@ -65,6 +65,7 @@ export default function Home() {
   const [searching, setSearching] = useState(false);
   const [marketIndex, setMarketIndex] = useState<Record<string, { changeRate: number }>>({});
   const [dayChanges, setDayChanges] = useState<Record<string, number>>({});
+  const [globalData, setGlobalData] = useState<Record<string, any>>({});
   const [user, setUser] = useState<any>(null);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
   const [authEmail, setAuthEmail] = useState("");
@@ -175,6 +176,9 @@ export default function Home() {
       } else if (hash === "#add") {
         setView("add");
         setSelInst(null);
+      } else if (hash === "#global") {
+        setView("global");
+        setSelInst(null);
       } else {
         setView("dashboard");
         setSelInst(null);
@@ -194,6 +198,8 @@ export default function Home() {
     } else if (v === "add") {
       window.history.pushState(null, "", "#add");
       setForm(f => { const hasBuys = trades.some(t => t.instrument_id === f.instrument_id && t.side === "BUY"); return { ...f, note: f.side === "BUY" && hasBuys && !f.note.trim() ? "추가 매수" : f.note }; });
+    } else if (v === "global") {
+      window.history.pushState(null, "", "#global");
     } else {
       window.history.pushState(null, "", window.location.pathname);
     }
@@ -203,6 +209,12 @@ export default function Home() {
   function goBack() {
     window.history.back();
   }
+
+  useEffect(() => {
+    if (view === "global") {
+      fetch("/api/global-indicators").then(r => r.json()).then(d => setGlobalData(d)).catch(() => {});
+    }
+  }, [view]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -446,7 +458,7 @@ export default function Home() {
         )}
         {view !== "detail" && (
           <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 2 }}>
-            {[{ k: "dashboard", l: "보유현황" }, { k: "trades", l: "거래내역" }, { k: "add", l: "+ 기록" }].map(t => (
+            {[{ k: "dashboard", l: "보유현황" }, { k: "trades", l: "거래내역" }, { k: "global", l: "국제지표" }, { k: "add", l: "+ 기록" }].map(t => (
               <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 10px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
           </div>
@@ -598,6 +610,10 @@ export default function Home() {
             ); })}
           </div>
 
+          {/* Add Trade Button */}
+          <div style={{ marginTop: 16, textAlign: "center" }}>
+            <button onClick={() => navigateTo("add")} style={{ padding: "12px 24px", borderRadius: 10, border: "1px dashed rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.06)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer", width: "100%" }}>+ 거래 기록 추가하기</button>
+          </div>
 
         </div>}
 
@@ -902,6 +918,45 @@ export default function Home() {
               </div>
             );
           })}
+        </div>}
+
+        {/* ============ GLOBAL INDICATORS ============ */}
+        {view === "global" && <div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 16 }}>국제 지표</div>
+          {Object.keys(globalData).length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b" }}>로딩 중...</div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              {[
+                { key: "usdkrw", icon: "💱", desc: "원/달러 환율" },
+                { key: "us10y", icon: "📊", desc: "미국 국채 수익률" },
+                { key: "brent", icon: "🛢️", desc: "국제 유가" },
+                { key: "vix", icon: "😱", desc: "시장 변동성" },
+                { key: "sox", icon: "🔧", desc: "반도체 업종" },
+                { key: "gold", icon: "🥇", desc: "안전자산" },
+              ].map(({ key, icon, desc }) => {
+                const d = globalData[key];
+                if (!d) return null;
+                const isUp = d.change >= 0;
+                const isVix = key === "vix";
+                const vixLevel = isVix ? (d.price >= 30 ? "극도의 공포" : d.price >= 20 ? "불안" : "안정") : "";
+                return (
+                  <div key={key} style={{ ...cs, padding: "14px 16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>{icon} {d.name}</div>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: isUp ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)", color: isUp ? "#ef4444" : "#3b82f6" }}>{isUp ? "▲" : "▼"} {Math.abs(d.change)}%</span>
+                    </div>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#f8fafc" }}>
+                      {d.unit === "원" ? fmt(Math.round(d.price)) : d.unit === "%" ? d.price.toFixed(2) : d.unit === "$" ? `$${fmt(Math.round(d.price * 100) / 100)}` : fmt(Math.round(d.price * 100) / 100)}
+                      {d.unit === "원" && <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원</span>}
+                      {d.unit === "%" && <span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>%</span>}
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{isVix ? vixLevel : desc}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>}
 
         {/* ============ ADD TRADE ============ */}
