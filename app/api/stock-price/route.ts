@@ -6,7 +6,6 @@ export async function GET(req: NextRequest) {
   let price = 0;
   let changeRate = 0;
 
-  // Method 1: Naver mobile API (works from Vercel)
   try {
     const mRes = await fetch(
       `https://m.stock.naver.com/api/stock/${symbol}/basic`,
@@ -14,37 +13,36 @@ export async function GET(req: NextRequest) {
     );
     if (mRes.ok) {
       const mData = await mRes.json();
+
+      // Regular market price
       if (mData?.closePrice) {
         price = Number(String(mData.closePrice).replace(/,/g, ""));
       }
-      if (mData?.compareToPreviousClosePrice && price) {
-        const diff = Number(String(mData.compareToPreviousClosePrice).replace(/,/g, ""));
-        const prev = price - diff;
-        if (prev > 0) changeRate = (diff / prev) * 100;
+      if (mData?.fluctuationsRatio) {
+        changeRate = Number(String(mData.fluctuationsRatio).replace(/,/g, ""));
+        if (mData?.compareToPreviousPrice?.code === "5" || mData?.compareToPreviousPrice?.name === "FALLING") {
+          changeRate = -Math.abs(changeRate);
+        }
       }
-    }
-  } catch (e) {}
 
-  // Method 2: Try after-hours price via Naver mobile real API
-  try {
-    const aRes = await fetch(
-      `https://m.stock.naver.com/api/stock/${symbol}/dealTrend`,
-      { headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" } }
-    );
-    if (aRes.ok) {
-      const aData = await aRes.json();
-      // After-hours price from deal trend
-      if (Array.isArray(aData) && aData.length > 0) {
-        const last = aData[aData.length - 1];
-        if (last?.closePrice) {
-          const afterPrice = Number(String(last.closePrice).replace(/,/g, ""));
-          if (afterPrice > 0) price = afterPrice;
+      // After-hours price (시간외)
+      const over = mData?.overMarketPriceInfo;
+      if (over?.overPrice && over?.overMarketStatus !== "NONE") {
+        const overPrice = Number(String(over.overPrice).replace(/,/g, ""));
+        if (overPrice > 0) {
+          price = overPrice;
+          if (over?.fluctuationsRatio) {
+            changeRate = Number(String(over.fluctuationsRatio).replace(/,/g, ""));
+            if (over?.compareToPreviousPrice?.code === "5" || over?.compareToPreviousPrice?.name === "FALLING") {
+              changeRate = -Math.abs(changeRate);
+            }
+          }
         }
       }
     }
   } catch (e) {}
 
-  // Method 3: Fallback - HTML scraping
+  // Fallback: HTML scraping
   if (!price) {
     try {
       const res = await fetch(
@@ -54,12 +52,10 @@ export async function GET(req: NextRequest) {
       const html = await res.text();
       const priceMatch = html.match(/no_today.*?<span class="blind">([0-9,]+)<\/span>/s);
       if (priceMatch) price = Number(priceMatch[1].replace(/,/g, ""));
-
       const changeMatch = html.match(/no_exday.*?<span class="blind">([0-9.]+)<\/span>/s);
-      const isDown = html.includes("nv_down");
       if (changeMatch) {
         changeRate = Number(changeMatch[1]);
-        if (isDown) changeRate = -changeRate;
+        if (html.includes("nv_down")) changeRate = -changeRate;
       }
     } catch (e) {}
   }
