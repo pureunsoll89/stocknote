@@ -38,6 +38,16 @@ function calculatePosition(trades: Trade[], market?: string) {
 
 function holdingDays(d: string) { return d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0; }
 function holdingWeeks(d: string) { return `${holdingDays(d)}일`; }
+
+// Check if instrument has an active (non-zero) position
+function hasActivePosition(trades: Trade[], instrumentId: string): boolean {
+  const it = trades.filter(t => t.instrument_id === instrumentId);
+  if (!it.length) return false;
+  const sorted = [...it].sort((a, b) => new Date(a.trade_date).getTime() - new Date(b.trade_date).getTime());
+  let qty = 0;
+  for (const t of sorted) { qty += t.side === "BUY" ? t.quantity : -t.quantity; if (qty <= 0) qty = 0; }
+  return qty > 0;
+}
 function getAlertLevel(r: number) { return r >= 0.05 ? "OUTPERFORM" : r >= -0.05 ? "NORMAL" : r >= -0.12 ? "WARNING" : "DANGER"; }
 function fmt(n: number) { return new Intl.NumberFormat("ko-KR").format(n); }
 const BENCH_RET: Record<string, number> = { KOSPI: 0.054, KOSDAQ: 0.038 };
@@ -200,7 +210,7 @@ export default function Home() {
       window.history.pushState(null, "", "#trades");
     } else if (v === "add") {
       window.history.pushState(null, "", "#add");
-      setForm(f => { const hasBuys = trades.some(t => t.instrument_id === f.instrument_id && t.side === "BUY"); return { ...f, note: f.side === "BUY" && hasBuys && !f.note.trim() ? "추가 매수" : f.note }; });
+      setForm(f => { const active = hasActivePosition(trades, f.instrument_id); return { ...f, note: f.side === "BUY" && active && !f.note.trim() ? "추가 매수" : f.note }; });
     } else if (v === "global") {
       window.history.pushState(null, "", "#global");
     } else {
@@ -352,15 +362,20 @@ export default function Home() {
   async function refreshPrices() {
     if (instruments.length === 0) return;
     setPriceLoading(true);
+    // Refresh market index
+    try { const mRes = await fetch("/api/market-index"); const mData = await mRes.json(); setMarketIndex(mData); } catch (e) {}
     const prices: Record<string, number> = {};
-    for (const inst of instruments) {
+    const changes: Record<string, number> = {};
+    await Promise.all(instruments.map(async (inst) => {
       try {
         const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
         const data = await res.json();
         if (data.price) prices[inst.id] = data.price;
+        if (data.changeRate !== undefined) changes[inst.id] = data.changeRate;
       } catch (e) {}
-    }
+    }));
     setCurrentPrices(prices);
+    setDayChanges(changes);
     setPriceLoading(false);
   }
 
@@ -424,7 +439,9 @@ export default function Home() {
     const stockRet = cp > 0 && pos.avgPrice > 0 ? (cp / pos.avgPrice) - 1 : 0;
     const br = BENCH_RET[inst.market] || 0; const rr = stockRet - br;
     const noMemo = it.filter(t => !t.note?.trim()).length;
-    const fm = [...it].sort((a, b) => new Date(a.trade_date).getTime() - new Date(b.trade_date).getTime()).find(t => t.side === "BUY" && t.note?.trim());
+    // Find first buy memo in CURRENT position (after firstBuyDate from calculatePosition)
+    const currentTrades = pos.firstBuyDate ? [...it].filter(t => t.trade_date >= pos.firstBuyDate).sort((a, b) => new Date(a.trade_date).getTime() - new Date(b.trade_date).getTime()) : [];
+    const fm = currentTrades.find(t => t.side === "BUY" && t.note?.trim() && t.note.trim() !== "추가 매수");
     return { ...inst, ...pos, currentPrice: cp, stockReturn: stockRet, benchReturn: br, relativeReturn: rr, alertLevel: getAlertLevel(rr), evalAmount: cp * pos.totalQty, unrealizedPnl: (cp - pos.avgPrice) * pos.totalQty, tradeCount: it.length, noMemoCount: noMemo, firstMemo: fm?.note || "" };
   }).filter(Boolean) as any[], [instruments, trades, currentPrices]);
 
@@ -1025,7 +1042,7 @@ export default function Home() {
             <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 22 }}>거래 기록</div>
             <div style={{ marginBottom: 16 }}>
               <label style={ls}>종목</label>
-              {instruments.length > 0 ? <select value={form.instrument_id} onChange={(e: any) => { const id = e.target.value; setForm(f => { const hasBuys = trades.some(t => t.instrument_id === id && t.side === "BUY"); return { ...f, instrument_id: id, note: f.side === "BUY" && hasBuys && !f.note.trim() ? "추가 매수" : f.note }; }); }} style={is}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name} ({i.symbol})</option>)}</select>
+              {instruments.length > 0 ? <select value={form.instrument_id} onChange={(e: any) => { const id = e.target.value; setForm(f => { const active = hasActivePosition(trades, id); return { ...f, instrument_id: id, note: f.side === "BUY" && active && !f.note.trim() ? "추가 매수" : f.note }; }); }} style={is}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name} ({i.symbol})</option>)}</select>
               : <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>등록된 종목이 없습니다</div>}
               <button onClick={() => setShowNewInst(!showNewInst)} style={{ marginTop: 8, padding: "6px 12px", borderRadius: 6, border: "1px dashed rgba(255,255,255,0.1)", background: "transparent", color: "#8b5cf6", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>{showNewInst ? "취소" : "+ 새 종목 추가"}</button>
               {showNewInst && <div style={{ marginTop: 10, padding: 14, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -1047,7 +1064,7 @@ export default function Home() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
               <div><label style={ls}>날짜</label><input type="date" value={form.trade_date} onChange={(e: any) => setForm(f => ({ ...f, trade_date: e.target.value }))} style={is} /></div>
               <div><label style={ls}>구분</label><div style={{ display: "flex", gap: 6 }}>
-                {["BUY","SELL"].map(s => <button key={s} onClick={() => setForm(f => { const hasBuys = trades.some(t => t.instrument_id === f.instrument_id && t.side === "BUY"); return { ...f, side: s, note: s === "BUY" && hasBuys && (!f.note.trim() || f.note.trim() === "추가 매수") ? "추가 매수" : (s === "SELL" && f.note.trim() === "추가 매수") ? "" : f.note }; })} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.06)", background: form.side === s ? (s === "BUY" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent", color: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
+                {["BUY","SELL"].map(s => <button key={s} onClick={() => setForm(f => { const active = hasActivePosition(trades, f.instrument_id); return { ...f, side: s, note: s === "BUY" && active && (!f.note.trim() || f.note.trim() === "추가 매수") ? "추가 매수" : (s === "SELL" && f.note.trim() === "추가 매수") ? "" : f.note }; })} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.06)", background: form.side === s ? (s === "BUY" ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)") : "transparent", color: form.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
               </div></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
