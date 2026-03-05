@@ -6,11 +6,11 @@ export async function GET(req: NextRequest) {
   let price = 0;
   let changeRate = 0;
 
+  // Method 1: Naver mobile API (works from Vercel)
   try {
-    // Primary: Naver mobile API (most reliable)
     const mRes = await fetch(
       `https://m.stock.naver.com/api/stock/${symbol}/basic`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+      { headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" } }
     );
     if (mRes.ok) {
       const mData = await mRes.json();
@@ -25,30 +25,31 @@ export async function GET(req: NextRequest) {
     }
   } catch (e) {}
 
-  // Try after-hours (시간외 단일가)
+  // Method 2: Try after-hours price via Naver mobile real API
   try {
-    const nxtRes = await fetch(
-      `https://m.stock.naver.com/api/stock/${symbol}/integration`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+    const aRes = await fetch(
+      `https://m.stock.naver.com/api/stock/${symbol}/dealTrend`,
+      { headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" } }
     );
-    if (nxtRes.ok) {
-      const nxtData = await nxtRes.json();
-      const afterHours = nxtData?.dealTrendInfos || nxtData?.afterHoursInfo;
-      if (afterHours?.closePrice) {
-        const afterPrice = Number(String(afterHours.closePrice).replace(/,/g, ""));
-        if (afterPrice > 0 && afterPrice !== price) {
-          price = afterPrice;
+    if (aRes.ok) {
+      const aData = await aRes.json();
+      // After-hours price from deal trend
+      if (Array.isArray(aData) && aData.length > 0) {
+        const last = aData[aData.length - 1];
+        if (last?.closePrice) {
+          const afterPrice = Number(String(last.closePrice).replace(/,/g, ""));
+          if (afterPrice > 0) price = afterPrice;
         }
       }
     }
   } catch (e) {}
 
-  // Fallback: Naver finance HTML
+  // Method 3: Fallback - HTML scraping
   if (!price) {
     try {
       const res = await fetch(
         `https://finance.naver.com/item/main.naver?code=${symbol}`,
-        { headers: { "User-Agent": "Mozilla/5.0" } }
+        { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } }
       );
       const html = await res.text();
       const priceMatch = html.match(/no_today.*?<span class="blind">([0-9,]+)<\/span>/s);
