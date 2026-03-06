@@ -1037,9 +1037,9 @@ export default function Home() {
                       <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: isUp ? "rgba(239,68,68,0.1)" : "rgba(59,130,246,0.1)", color: isUp ? "#ef4444" : "#3b82f6" }}>{isUp ? "▲" : "▼"} {Math.abs(d.change)}%</span>
                     </div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: "#f8fafc" }}>
-                      {isGold && d.priceKrw ? <>{fmt(d.priceKrw)}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원/g</span></> : d.unit === "원" ? <>{fmt(Math.round(d.price))}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원</span></> : d.unit === "%" ? <>{d.price.toFixed(2)}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>%</span></> : d.unit === "$" ? <>${fmt(Math.round(d.price * 100) / 100)}</> : <>{fmt(Math.round(d.price * 100) / 100)}</>}
+                      {isGold ? <>{fmt(d.price)}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원/g</span></> : d.unit === "원" ? <>{fmt(Math.round(d.price))}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>원</span></> : d.unit === "%" ? <>{d.price.toFixed(2)}<span style={{ fontSize: 13, fontWeight: 500, color: "#94a3b8" }}>%</span></> : d.unit === "$" ? <>${fmt(Math.round(d.price * 100) / 100)}</> : <>{fmt(Math.round(d.price * 100) / 100)}</>}
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{isVix ? vixLevel : desc}{isGold && d.priceKrw ? ` · $${fmt(Math.round(d.price))}/oz` : ""}</div>
+                    <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>{isVix ? vixLevel : desc}{isGold && d.priceUsd ? ` · $${fmt(Math.round(d.priceUsd))}/oz` : ""}</div>
                   </div>
                 );
               })}
@@ -1048,7 +1048,7 @@ export default function Home() {
             {/* Global Chart */}
             {globalSel && globalData[globalSel] && (
               <div style={{ ...cs, marginTop: 12, padding: "12px 14px" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{globalData[globalSel].name} 차트 (6개월)</div>
+                <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{globalData[globalSel].name} 차트 (6개월){globalSel === "gold" ? " · USD 기준" : ""}</div>
                 <div ref={globalChartRef} />
               </div>
             )}
