@@ -1,90 +1,78 @@
 import { NextResponse } from "next/server";
 
-// Fetch from Naver world index API
-async function fetchNaverWorldIndex(code: string) {
-  try {
-    const res = await fetch(
-      `https://m.stock.naver.com/api/index/${code}/basic`,
-      { headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const close = parseFloat(String(data?.closePrice || "0").replace(/,/g, ""));
-    const ratio = parseFloat(String(data?.fluctuationsRatio || "0").replace(/,/g, ""));
-    const isFalling = data?.compareToPreviousPrice?.name === "FALLING" || data?.compareToPreviousPrice?.code === "5";
-    return { price: close, change: isFalling ? -Math.abs(ratio) : Math.abs(ratio) };
-  } catch (e) { return null; }
-}
-
-// Fetch from Naver marketindex (exchange rates, commodities)
-async function fetchNaverMarketIndex(code: string) {
-  try {
-    const res = await fetch(
-      `https://m.stock.naver.com/api/marketindex/${code}/basic`,
-      { headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" } }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const close = parseFloat(String(data?.closePrice || "0").replace(/,/g, ""));
-    const ratio = parseFloat(String(data?.fluctuationsRatio || "0").replace(/,/g, ""));
-    const isFalling = data?.compareToPreviousPrice?.name === "FALLING" || data?.compareToPreviousPrice?.code === "5";
-    return { price: close, change: isFalling ? -Math.abs(ratio) : Math.abs(ratio) };
-  } catch (e) { return null; }
-}
-
 export async function GET() {
   const results: Record<string, any> = {};
 
-  // Define items to fetch
+  // Naver marketindex page - exchange rates & commodities
+  // These URLs work reliably from Vercel
   const items = [
-    { key: "usdkrw", name: "USD/KRW 환율", unit: "원", type: "marketindex", code: "FX_USDKRW" },
-    { key: "us10y", name: "미국 10년물 금리", unit: "%", type: "index", code: "US10YT" },
-    { key: "brent", name: "브렌트유", unit: "$", type: "marketindex", code: "OIL_CL" },
-    { key: "vix", name: "VIX 공포지수", unit: "", type: "index", code: "VIX" },
-    { key: "sox", name: "필라델피아 반도체", unit: "", type: "index", code: "SOX" },
-    { key: "gold", name: "금", unit: "원", type: "marketindex", code: "GOLD_HKEX" },
+    { key: "usdkrw", name: "USD/KRW 환율", unit: "원", url: "https://finance.naver.com/marketindex/exchangeDetail.naver?marketindexCd=FX_USDKRW" },
+    { key: "gold", name: "금", unit: "$/oz", url: "https://finance.naver.com/marketindex/goldDetail.naver?marketindexCd=GOLD_HKEX" },
+    { key: "brent", name: "브렌트유", unit: "$", url: "https://finance.naver.com/marketindex/worldOilDetail.naver?marketindexCd=OIL_BRT" },
   ];
 
-  // Try Naver mobile APIs
-  await Promise.all(items.map(async (item) => {
-    let data = null;
-    if (item.type === "marketindex") {
-      data = await fetchNaverMarketIndex(item.code);
-    } else {
-      data = await fetchNaverWorldIndex(item.code);
-    }
-    if (data) {
-      results[item.key] = { name: item.name, unit: item.unit, ...data, yahooSymbol: item.code };
-    }
+  const worldItems = [
+    { key: "vix", name: "VIX 공포지수", unit: "", symbol: "VIX@CBOE" },
+    { key: "sox", name: "필라델피아 반도체", unit: "", symbol: "SOX@PHIL" },
+    { key: "us10y", name: "미국 10년물 금리", unit: "%", symbol: "US10YT=X" },
+  ];
+
+  // Method 1: Naver marketindex pages for exchange/commodities
+  await Promise.all(items.map(async ({ key, name, unit, url }) => {
+    try {
+      const res = await fetch(url, {
+        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+      });
+      const html = await res.text();
+      // Price: <span class="no">1,450.50</span>
+      const priceMatch = html.match(/<span\s+class="no">\s*([0-9,]+\.?[0-9]*)\s*<\/span>/);
+      // Change rate: class="cpc" or percent
+      const rateMatch = html.match(/class="per[^"]*"[^>]*>\s*([0-9.]+)%/s);
+      const isDown = html.includes("graph_img down") || html.includes("ico_down") || html.includes("minus");
+
+      if (priceMatch) {
+        const price = parseFloat(priceMatch[1].replace(/,/g, ""));
+        let change = rateMatch ? parseFloat(rateMatch[1]) : 0;
+        if (isDown) change = -change;
+        results[key] = { name, unit, price, change: Math.round(change * 100) / 100 };
+      }
+    } catch (e) {}
   }));
 
-  // Fallback codes if primary ones fail
-  const fallbacks: Record<string, { type: string; codes: string[] }> = {
-    usdkrw: { type: "marketindex", codes: ["FX_USDKRW", "exchangeRate/FX_USDKRW"] },
-    brent: { type: "marketindex", codes: ["OIL_BT", "worldOilPrice/OIL_BT", "OIL_CL"] },
-    gold: { type: "marketindex", codes: ["GOLD_HKEX", "goldPrice/GOLD_HKEX", "GLD"] },
-    vix: { type: "index", codes: ["VIX", "CBOE_VIX", ".VIX"] },
-    sox: { type: "index", codes: ["SOX", "SOXX", "PHLX_SOX"] },
-    us10y: { type: "index", codes: ["US10YT", "TNX", "US10Y"] },
-  };
+  // Method 2: Naver world stock indices via sise page
+  await Promise.all(worldItems.map(async ({ key, name, unit, symbol }) => {
+    try {
+      // Try world index page
+      const codeMap: Record<string, string> = {
+        "VIX@CBOE": "VIX",
+        "SOX@PHIL": "SOXX",
+        "US10YT=X": "US10Y",
+      };
+      const worldCode = codeMap[symbol] || symbol;
 
-  for (const [key, fb] of Object.entries(fallbacks)) {
-    if (results[key]) continue;
-    for (const code of fb.codes) {
-      const data = fb.type === "marketindex" ? await fetchNaverMarketIndex(code) : await fetchNaverWorldIndex(code);
-      if (data && data.price > 0) {
-        const item = items.find(i => i.key === key);
-        results[key] = { name: item?.name || key, unit: item?.unit || "", ...data, yahooSymbol: code };
-        break;
+      // Try Naver world sise
+      const res = await fetch(
+        `https://finance.naver.com/world/sise.naver?symbol=${symbol}`,
+        { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } }
+      );
+      const html = await res.text();
+      // <span id="now_value">5,234.56</span>
+      const priceMatch = html.match(/now_value[^>]*>\s*([0-9,]+\.?[0-9]*)/);
+      const rateMatch = html.match(/per_value[^>]*>\s*([0-9.]+)%/);
+      const isDown = html.includes("point_dn") || html.includes("ico_d_") || html.includes("minus");
+
+      if (priceMatch) {
+        const price = parseFloat(priceMatch[1].replace(/,/g, ""));
+        let change = rateMatch ? parseFloat(rateMatch[1]) : 0;
+        if (isDown) change = -change;
+        results[key] = { name, unit, price, change: Math.round(change * 100) / 100 };
       }
-    }
-  }
+    } catch (e) {}
+  }));
 
-  // Calculate gold in KRW/g if we have USD gold price and exchange rate
-  if (results["gold"]?.price && results["usdkrw"]?.price && results["gold"].unit !== "원") {
-    const usdPrice = results["gold"].price;
-    const krwRate = results["usdkrw"].price;
-    results["gold"].priceKrw = Math.round((usdPrice / 31.1035) * krwRate);
+  // Gold: convert to KRW/g if we have exchange rate
+  if (results["gold"]?.price && results["usdkrw"]?.price) {
+    results["gold"].priceKrw = Math.round((results["gold"].price / 31.1035) * results["usdkrw"].price);
   }
 
   return NextResponse.json(results, {
