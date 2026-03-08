@@ -297,7 +297,7 @@ export default function Home() {
   }
 
   async function signInKakao() {
-    await supabase.auth.signInWithOAuth({ provider: "kakao", options: { redirectTo: "https://stocknote-mu.vercel.app" } });
+    await supabase.auth.signInWithOAuth({ provider: "kakao", options: { redirectTo: "https://stocknote-mu.vercel.app", scopes: "profile_nickname profile_image" } });
   }
 
   async function signInEmail() {
