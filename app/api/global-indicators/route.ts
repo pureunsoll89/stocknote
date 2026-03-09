@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 async function fetchYahoo(symbol: string) {
   try {
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
       { headers: { "User-Agent": "Mozilla/5.0" } }
     );
     const data = await res.json();
@@ -11,10 +11,10 @@ async function fetchYahoo(symbol: string) {
     if (!meta) return null;
 
     const current = meta.regularMarketPrice || 0;
-    const prevClose = meta.chartPreviousClose || 0;
+    const prevClose = meta.chartPreviousClose || meta.previousClose || 0;
     const change = prevClose > 0 ? ((current - prevClose) / prevClose) * 100 : 0;
 
-    return { price: current, change: Math.round(change * 100) / 100 };
+    return { price: current, change: Math.round(change * 100) / 100, prevClose };
   } catch (e) {
     return null;
   }
@@ -35,7 +35,7 @@ export async function GET() {
   await Promise.all(items.map(async ({ key, symbol, name, unit }) => {
     const data = await fetchYahoo(symbol);
     if (data && data.price > 0) {
-      results[key] = { name, unit, yahooSymbol: symbol, ...data };
+      results[key] = { name, unit, yahooSymbol: symbol, price: data.price, change: data.change };
     }
   }));
 

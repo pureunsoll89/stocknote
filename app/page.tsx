@@ -568,7 +568,7 @@ export default function Home() {
           )}
 
           {/* Summary Card - 증권앱 스타일 */}
-          {positions.length > 0 && (
+          {(positions.length > 0 || allRealizedPnl !== 0) && (
             <div style={{ ...cs, marginBottom: 16, padding: "20px 20px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div>
