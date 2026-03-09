@@ -605,7 +605,14 @@ export default function Home() {
           ) : null}
 
           {/* Empty State */}
-          {!positions.length && (
+          {!positions.length && trades.length > 0 && (
+            <div style={{ textAlign: "center", padding: "40px 0", color: "#64748b" }}>
+              <div style={{ fontSize: 14, marginBottom: 8 }}>현재 보유 중인 종목이 없습니다</div>
+              <button onClick={() => navigateTo("add")} style={{ padding: "10px 24px", borderRadius: 8, border: "1px dashed rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.06)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>새 거래 기록하기</button>
+            </div>
+          )}
+
+          {!positions.length && !trades.length && (
             <div style={{ textAlign: "center", padding: "60px 0", color: "#475569" }}>
               <div style={{ fontSize: 14, marginBottom: 8 }}>아직 기록된 거래가 없습니다</div>
               <button onClick={() => navigateTo("add")} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>첫 거래 기록하기</button>
@@ -1025,8 +1032,10 @@ export default function Home() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               {[
                 { key: "usdkrw", icon: "💱", desc: "원/달러 환율" },
+                { key: "dxy", icon: "💵", desc: "달러 강세 지표" },
                 { key: "us10y", icon: "📊", desc: "미국 국채 수익률" },
-                { key: "brent", icon: "🛢️", desc: "국제 유가" },
+                { key: "brent", icon: "🛢️", desc: "국제 유가 (브렌트)" },
+                { key: "wti", icon: "🛢️", desc: "국제 유가 (텍사스)" },
                 { key: "vix", icon: "😱", desc: "시장 변동성" },
                 { key: "sox", icon: "🔧", desc: "반도체 업종" },
                 { key: "gold", icon: "🥇", desc: "안전자산" },
@@ -1110,6 +1119,13 @@ export default function Home() {
           </div>
         </div>}
       </main>
+
+      {/* Footer */}
+      <footer style={{ textAlign: "center", padding: "20px 12px 32px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>주식노트</div>
+        <div style={{ fontSize: 11, color: "#334155", marginTop: 4 }}>손실을 줄이는 투자 습관</div>
+        <a href="https://forms.gle/V9kKgRmRq6iE84ye7" target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, padding: "6px 16px", borderRadius: 6, border: "1px solid rgba(124,58,237,0.2)", background: "rgba(124,58,237,0.06)", color: "#a78bfa", fontSize: 11, fontWeight: 600, textDecoration: "none" }}>피드백하기</a>
+      </footer>
     </div>
   );
 }
