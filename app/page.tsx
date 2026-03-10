@@ -94,6 +94,7 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [fontScale, setFontScale] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
@@ -990,56 +991,94 @@ export default function Home() {
         </div>}
 
         {/* ============ TRADES ============ */}
-        {view === "trades" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {view === "trades" && <div>
           {!trades.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569", fontSize: 14 }}>거래내역이 없습니다</div>}
-          {[...trades].sort((a, b) => { const d = b.trade_date.localeCompare(a.trade_date); return d !== 0 ? d : b.id.localeCompare(a.id); }).map(t => {
-            const inst = instruments.find(i => i.id === t.instrument_id); const hm = !!t.note?.trim(); const isEd = editTrade?.id === t.id;
-            if (isEd) return (
-              <div key={t.id} style={{ ...cs, padding: 16, border: "1px solid rgba(124,58,237,0.25)" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                  <select value={editTrade.instrument_id} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, instrument_id: e.target.value }))} style={{ ...ei, width: "100%" }}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
-                  <input type="date" value={editTrade.trade_date} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, trade_date: e.target.value }))} style={{ ...ei, width: "100%" }} />
+          {(() => {
+            const sorted = [...trades].sort((a, b) => { const d = b.trade_date.localeCompare(a.trade_date); return d !== 0 ? d : b.id.localeCompare(a.id); });
+            const months: Record<string, Trade[]> = {};
+            sorted.forEach(t => { const m = t.trade_date.slice(0, 7); if (!months[m]) months[m] = []; months[m].push(t); });
+            const monthKeys = Object.keys(months).sort((a, b) => b.localeCompare(a));
+            // Auto-expand current month
+            if (monthKeys.length > 0 && expandedMonths.size === 0) {
+              const now = new Date().toISOString().slice(0, 7);
+              expandedMonths.add(monthKeys[0]);
+              if (monthKeys.includes(now)) expandedMonths.add(now);
+            }
+            return monthKeys.map(monthKey => {
+              const monthTrades = months[monthKey];
+              const [y, m] = monthKey.split("-");
+              const label = `${y}년 ${parseInt(m)}월`;
+              const isOpen = expandedMonths.has(monthKey);
+              const toggleMonth = () => setExpandedMonths(prev => { const next = new Set(prev); if (next.has(monthKey)) next.delete(monthKey); else next.add(monthKey); return next; });
+              const buyTotal = monthTrades.filter(t => t.side === "BUY").reduce((s, t) => s + t.quantity * t.price, 0);
+              const sellTotal = monthTrades.filter(t => t.side === "SELL").reduce((s, t) => s + t.quantity * t.price, 0);
+              return (
+                <div key={monthKey} style={{ marginBottom: 8 }}>
+                  <button onClick={toggleMonth} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: "#e2e8f0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
+                      <span style={{ fontSize: 11, color: "#64748b" }}>{monthTrades.length}건</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {buyTotal > 0 && <span style={{ fontSize: 11, color: "#ef4444" }}>매수 {fmt(buyTotal)}원</span>}
+                      {sellTotal > 0 && <span style={{ fontSize: 11, color: "#3b82f6" }}>매도 {fmt(sellTotal)}원</span>}
+                      <span style={{ fontSize: 12, color: "#64748b" }}>{isOpen ? "▲" : "▼"}</span>
+                    </div>
+                  </button>
+                  {isOpen && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                      {monthTrades.map(t => {
+                        const inst = instruments.find(i => i.id === t.instrument_id); const hm = !!t.note?.trim(); const isEd = editTrade?.id === t.id;
+                        if (isEd) return (
+                          <div key={t.id} style={{ ...cs, padding: 16, border: "1px solid rgba(124,58,237,0.25)" }}>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                              <select value={editTrade.instrument_id} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, instrument_id: e.target.value }))} style={{ ...ei, width: "100%" }}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+                              <input type="date" value={editTrade.trade_date} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, trade_date: e.target.value }))} style={{ ...ei, width: "100%" }} />
+                            </div>
+                            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                              {(["BUY", "SELL"] as const).map(s => <button key={s} onClick={() => setEditTrade((p: any) => ({ ...p, side: s }))} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid", cursor: "pointer", fontSize: 11, fontWeight: 700, background: editTrade.side === s ? (s === "BUY" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)") : "transparent", borderColor: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.08)", color: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.quantity} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, quantity: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>주</span></div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.price} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, price: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>원</span></div>
+                            </div>
+                            <textarea value={editTrade.note || ""} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, note: e.target.value }))} placeholder="매매 이유" rows={2} style={{ ...ei, width: "100%", resize: "vertical", lineHeight: 1.5, fontFamily: "inherit", minHeight: 48, marginBottom: 12 }} />
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <button onClick={() => delTrade(t.id)} style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>삭제</button>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <button onClick={() => setEditTrade(null)} style={{ padding: "7px 16px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>취소</button>
+                                <button onClick={saveEdit} style={{ padding: "7px 16px", borderRadius: 7, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                        return (
+                          <div key={t.id} style={{ ...cs, padding: "12px 16px" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
+                                <span style={{ fontSize: 13, fontWeight: 700 }}>{inst?.name}</span>
+                                <span style={{ fontSize: 11, color: "#64748b" }}>{t.trade_date}</span>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                {!hm && <IconWarn />}
+                                <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>수정</button>
+                              </div>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 38 }}>
+                              <span style={{ fontSize: 12, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>
+                              <span style={{ fontSize: 13, fontWeight: 600 }}>{fmt(t.quantity * t.price)}원</span>
+                            </div>
+                            {hm && <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}` }}><div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{t.note}</div></div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                  {(["BUY", "SELL"] as const).map(s => <button key={s} onClick={() => setEditTrade((p: any) => ({ ...p, side: s }))} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid", cursor: "pointer", fontSize: 11, fontWeight: 700, background: editTrade.side === s ? (s === "BUY" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)") : "transparent", borderColor: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.08)", color: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.quantity} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, quantity: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>주</span></div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.price} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, price: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>원</span></div>
-                </div>
-                <textarea value={editTrade.note || ""} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, note: e.target.value }))} placeholder="매매 이유" rows={2} style={{ ...ei, width: "100%", resize: "vertical", lineHeight: 1.5, fontFamily: "inherit", minHeight: 48, marginBottom: 12 }} />
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <button onClick={() => delTrade(t.id)} style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>삭제</button>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={() => setEditTrade(null)} style={{ padding: "7px 16px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>취소</button>
-                    <button onClick={saveEdit} style={{ padding: "7px 16px", borderRadius: 7, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>저장</button>
-                  </div>
-                </div>
-              </div>
-            );
-            return (
-              <div key={t.id} style={{ ...cs, padding: "12px 16px" }}>
-                {/* Row 1: badge + name + date */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
-                    <span style={{ fontSize: 13, fontWeight: 700 }}>{inst?.name}</span>
-                    <span style={{ fontSize: 11, color: "#64748b" }}>{t.trade_date}</span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                    {!hm && <IconWarn />}
-                    <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>수정</button>
-                  </div>
-                </div>
-                {/* Row 2: qty x price = total */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 38 }}>
-                  <span style={{ fontSize: 12, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{fmt(t.quantity * t.price)}원</span>
-                </div>
-                {hm && <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}` }}><div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{t.note}</div></div>}
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>}
 
         {/* ============ GLOBAL INDICATORS ============ */}
