@@ -891,12 +891,54 @@ export default function Home() {
 
           {/* Trade Timeline */}
           {(() => {
-            const sortedAsc = [...instTrades].reverse();
+            // Current position trades only (after last full sell)
+            const pos = selPos;
+            const allTrades = [...instTrades]; // already sorted newest first
+            const currentTrades = pos?.firstBuyDate ? allTrades.filter(t => t.trade_date >= pos.firstBuyDate) : allTrades;
+            const sortedAsc = [...currentTrades].reverse(); // oldest first
+            
             const firstBuy = sortedAsc.find(t => t.side === "BUY" && t.note?.trim() && t.note.trim() !== "추가 매수");
-            const addBuys = instTrades.filter(t => t.note?.trim() === "추가 매수");
-            const otherTrades = instTrades.filter(t => t.id !== firstBuy?.id && t.note?.trim() !== "추가 매수");
+            const addBuys = currentTrades.filter(t => t.note?.trim() === "추가 매수");
+            const recentActions = currentTrades.filter(t => t.id !== firstBuy?.id && t.note?.trim() !== "추가 매수");
+
+            // Render a single trade card (reusable)
+            const renderTrade = (t: Trade) => {
+              const hm = !!t.note?.trim();
+              const isEditingThis = editingNote === t.id;
+              return (
+                <div key={t.id} style={{ ...cs, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hm || isEditingThis ? 10 : 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{t.quantity}주 × {fmt(t.price)}원</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, marginLeft: "auto" }}>{fmt(t.quantity * t.price)}원</span>
+                  </div>
+                  {isEditingThis ? (
+                    <div>
+                      <textarea value={noteText} onChange={(e: any) => setNoteText(e.target.value)} placeholder="매매 이유를 기록하세요..." rows={2} style={{ ...is, resize: "vertical", fontSize: 13, lineHeight: 1.6, minHeight: 50, fontFamily: "inherit" }} autoFocus />
+                      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                        <button onClick={() => { if (confirm("이 거래 기록을 삭제하시겠습니까?")) delTrade(t.id); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>삭제</button>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => setEditingNote(null)} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
+                          <button onClick={() => saveTradeNote(t.id)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : hm ? (
+                    <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(t.note); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}`, cursor: "pointer" }}>
+                      <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{t.note}</div>
+                    </div>
+                  ) : (
+                    <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(""); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(245,158,11,0.06)", border: "1px dashed rgba(245,158,11,0.2)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                      <IconWarn /><span style={{ fontSize: 12, color: "#fbbf24" }}>이유 미기록 — 탭하여 추가</span>
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
             return <>
-              {/* First Buy Reason - Pinned */}
+              {/* 1. First Buy Reason - Pinned */}
               {firstBuy && (
                 editingNote === firstBuy.id ? (
                   <div style={{ ...cs, marginBottom: 12, padding: "14px 18px", borderLeft: "3px solid #ef4444" }}>
@@ -920,7 +962,17 @@ export default function Home() {
                 )
               )}
 
-              {/* 추가 매수 Summary */}
+              {/* 2. Recent Actions (newest first, excluding firstBuy and 추가매수) */}
+              {recentActions.length > 0 && (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}><IconMemo /> 최근 매매</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                    {recentActions.map(renderTrade)}
+                  </div>
+                </>
+              )}
+
+              {/* 3. 추가 매수 Summary (grouped) */}
               {addBuys.length > 0 && (
                 <div style={{ ...cs, marginBottom: 12, padding: "12px 18px" }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>추가 매수 {addBuys.length}건</div>
@@ -947,45 +999,6 @@ export default function Home() {
                   </div>
                 </div>
               )}
-
-              {/* Other Trades */}
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}><IconMemo /> 매매 기록</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {otherTrades.map((t) => {
-                  const hm = !!t.note?.trim();
-                  const isEditingThis = editingNote === t.id;
-                  return (
-                    <div key={t.id} style={{ ...cs, padding: "14px 16px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: hm || isEditingThis ? 10 : 0 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
-                        <span style={{ fontSize: 12, color: "#64748b" }}>{t.trade_date}</span>
-                        <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{t.quantity}주 × {fmt(t.price)}원</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, marginLeft: "auto" }}>{fmt(t.quantity * t.price)}원</span>
-                      </div>
-                      {isEditingThis ? (
-                        <div>
-                          <textarea value={noteText} onChange={(e: any) => setNoteText(e.target.value)} placeholder="매매 이유를 기록하세요..." rows={2} style={{ ...is, resize: "vertical", fontSize: 13, lineHeight: 1.6, minHeight: 50, fontFamily: "inherit" }} autoFocus />
-                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
-                            <button onClick={() => { if (confirm("이 거래 기록을 삭제하시겠습니까?")) delTrade(t.id); }} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>삭제</button>
-                            <div style={{ display: "flex", gap: 8 }}>
-                              <button onClick={() => setEditingNote(null)} style={{ padding: "5px 12px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer" }}>취소</button>
-                              <button onClick={() => saveTradeNote(t.id)} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#7c3aed", color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>저장</button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : hm ? (
-                        <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(t.note); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}`, cursor: "pointer" }}>
-                          <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.6 }}>{t.note}</div>
-                        </div>
-                      ) : (
-                        <div onClick={(e) => { e.stopPropagation(); setEditingNote(t.id); setNoteText(""); }} style={{ padding: "8px 12px", borderRadius: 6, background: "rgba(245,158,11,0.06)", border: "1px dashed rgba(245,158,11,0.2)", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                          <IconWarn /><span style={{ fontSize: 12, color: "#fbbf24" }}>이유 미기록 — 탭하여 추가</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
             </>;
           })()}
         </div>}
@@ -1021,52 +1034,96 @@ export default function Home() {
                   </button>
                   {isOpen && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                      {monthTrades.map(t => {
-                        const inst = instruments.find(i => i.id === t.instrument_id); const hm = !!t.note?.trim(); const isEd = editTrade?.id === t.id;
-                        if (isEd) return (
-                          <div key={t.id} style={{ ...cs, padding: 16, border: "1px solid rgba(124,58,237,0.25)" }}>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                              <select value={editTrade.instrument_id} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, instrument_id: e.target.value }))} style={{ ...ei, width: "100%" }}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
-                              <input type="date" value={editTrade.trade_date} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, trade_date: e.target.value }))} style={{ ...ei, width: "100%" }} />
-                            </div>
-                            <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-                              {(["BUY", "SELL"] as const).map(s => <button key={s} onClick={() => setEditTrade((p: any) => ({ ...p, side: s }))} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid", cursor: "pointer", fontSize: 11, fontWeight: 700, background: editTrade.side === s ? (s === "BUY" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)") : "transparent", borderColor: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.08)", color: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
-                            </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.quantity} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, quantity: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>주</span></div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.price} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, price: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>원</span></div>
-                            </div>
-                            <textarea value={editTrade.note || ""} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, note: e.target.value }))} placeholder="매매 이유" rows={2} style={{ ...ei, width: "100%", resize: "vertical", lineHeight: 1.5, fontFamily: "inherit", minHeight: 48, marginBottom: 12 }} />
-                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                              <button onClick={() => delTrade(t.id)} style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>삭제</button>
-                              <div style={{ display: "flex", gap: 8 }}>
-                                <button onClick={() => setEditTrade(null)} style={{ padding: "7px 16px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>취소</button>
-                                <button onClick={saveEdit} style={{ padding: "7px 16px", borderRadius: 7, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                      {(() => {
+                        // Group consecutive 추가매수 by instrument
+                        const addBuysByInst: Record<string, Trade[]> = {};
+                        const normalTrades: Trade[] = [];
+                        monthTrades.forEach(t => {
+                          if (t.note?.trim() === "추가 매수") {
+                            if (!addBuysByInst[t.instrument_id]) addBuysByInst[t.instrument_id] = [];
+                            addBuysByInst[t.instrument_id].push(t);
+                          } else {
+                            normalTrades.push(t);
+                          }
+                        });
+
+                        // Render grouped add buys
+                        const renderedAddBuyGroups = Object.entries(addBuysByInst).map(([instId, grpTrades]) => {
+                          const inst = instruments.find(i => i.id === instId);
+                          const totalAmt = grpTrades.reduce((s, t) => s + t.quantity * t.price, 0);
+                          return (
+                            <div key={`addgrp-${instId}`} style={{ ...cs, padding: "10px 14px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#ef4444" }}>추가매수</span>
+                                  <span style={{ fontSize: 13, fontWeight: 700 }}>{inst?.name}</span>
+                                  <span style={{ fontSize: 11, color: "#64748b" }}>{grpTrades.length}건</span>
+                                </div>
+                                <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(totalAmt)}원</span>
+                              </div>
+                              <div style={{ paddingLeft: 38 }}>
+                                {grpTrades.map(t => (
+                                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", padding: "2px 0" }}>
+                                    <span>{t.trade_date}</span>
+                                    <span>{t.quantity}주 × {fmt(t.price)}원 = {fmt(t.quantity * t.price)}원</span>
+                                    <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ background: "none", border: "none", color: "#475569", fontSize: 10, cursor: "pointer" }}>수정</button>
+                                  </div>
+                                ))}
                               </div>
                             </div>
-                          </div>
-                        );
-                        return (
-                          <div key={t.id} style={{ ...cs, padding: "12px 16px" }}>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
-                                <span style={{ fontSize: 13, fontWeight: 700 }}>{inst?.name}</span>
-                                <span style={{ fontSize: 11, color: "#64748b" }}>{t.trade_date}</span>
+                          );
+                        });
+
+                        // Render normal trades
+                        const renderedNormal = normalTrades.map(t => {
+                          const inst = instruments.find(i => i.id === t.instrument_id); const hm = !!t.note?.trim(); const isEd = editTrade?.id === t.id;
+                          if (isEd) return (
+                            <div key={t.id} style={{ ...cs, padding: 16, border: "1px solid rgba(124,58,237,0.25)" }}>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                                <select value={editTrade.instrument_id} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, instrument_id: e.target.value }))} style={{ ...ei, width: "100%" }}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+                                <input type="date" value={editTrade.trade_date} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, trade_date: e.target.value }))} style={{ ...ei, width: "100%" }} />
                               </div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                                {!hm && <IconWarn />}
-                                <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>수정</button>
+                              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                                {(["BUY", "SELL"] as const).map(s => <button key={s} onClick={() => setEditTrade((p: any) => ({ ...p, side: s }))} style={{ flex: 1, padding: "6px 0", borderRadius: 6, border: "1px solid", cursor: "pointer", fontSize: 11, fontWeight: 700, background: editTrade.side === s ? (s === "BUY" ? "rgba(239,68,68,0.15)" : "rgba(59,130,246,0.15)") : "transparent", borderColor: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "rgba(255,255,255,0.08)", color: editTrade.side === s ? (s === "BUY" ? "#ef4444" : "#3b82f6") : "#64748b" }}>{s === "BUY" ? "매수" : "매도"}</button>)}
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.quantity} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, quantity: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>주</span></div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}><input type="number" value={editTrade.price} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, price: e.target.value }))} style={{ ...ei, flex: 1, textAlign: "right" }} /><span style={{ fontSize: 12, color: "#475569" }}>원</span></div>
+                              </div>
+                              <textarea value={editTrade.note || ""} onChange={(e: any) => setEditTrade((p: any) => ({ ...p, note: e.target.value }))} placeholder="매매 이유" rows={2} style={{ ...ei, width: "100%", resize: "vertical", lineHeight: 1.5, fontFamily: "inherit", minHeight: 48, marginBottom: 12 }} />
+                              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                <button onClick={() => delTrade(t.id)} style={{ padding: "7px 14px", borderRadius: 7, border: "1px solid rgba(239,68,68,0.2)", background: "rgba(239,68,68,0.08)", color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>삭제</button>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button onClick={() => setEditTrade(null)} style={{ padding: "7px 16px", borderRadius: 7, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>취소</button>
+                                  <button onClick={saveEdit} style={{ padding: "7px 16px", borderRadius: 7, border: "none", background: "linear-gradient(135deg,#3b82f6,#7c3aed)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                                </div>
                               </div>
                             </div>
-                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 38 }}>
-                              <span style={{ fontSize: 12, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>
-                              <span style={{ fontSize: 13, fontWeight: 600 }}>{fmt(t.quantity * t.price)}원</span>
+                          );
+                          return (
+                            <div key={t.id} style={{ ...cs, padding: "12px 16px" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
+                                  <span style={{ fontSize: 13, fontWeight: 700 }}>{inst?.name}</span>
+                                  <span style={{ fontSize: 11, color: "#64748b" }}>{t.trade_date}</span>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  {!hm && <IconWarn />}
+                                  <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ padding: "4px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.06)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", fontWeight: 600 }}>수정</button>
+                                </div>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingLeft: 38 }}>
+                                <span style={{ fontSize: 12, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>
+                                <span style={{ fontSize: 13, fontWeight: 600 }}>{fmt(t.quantity * t.price)}원</span>
+                              </div>
+                              {hm && <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}` }}><div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{t.note}</div></div>}
                             </div>
-                            {hm && <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}` }}><div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{t.note}</div></div>}
-                          </div>
-                        );
-                      })}
+                          );
+                        });
+
+                        return [...renderedNormal, ...renderedAddBuyGroups];
+                      })()}
                     </div>
                   )}
                 </div>
