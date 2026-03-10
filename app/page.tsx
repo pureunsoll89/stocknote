@@ -998,12 +998,6 @@ export default function Home() {
             const months: Record<string, Trade[]> = {};
             sorted.forEach(t => { const m = t.trade_date.slice(0, 7); if (!months[m]) months[m] = []; months[m].push(t); });
             const monthKeys = Object.keys(months).sort((a, b) => b.localeCompare(a));
-            // Auto-expand current month
-            if (monthKeys.length > 0 && expandedMonths.size === 0) {
-              const now = new Date().toISOString().slice(0, 7);
-              expandedMonths.add(monthKeys[0]);
-              if (monthKeys.includes(now)) expandedMonths.add(now);
-            }
             return monthKeys.map(monthKey => {
               const monthTrades = months[monthKey];
               const [y, m] = monthKey.split("-");
