@@ -526,7 +526,7 @@ export default function Home() {
 
   // --- MAIN APP ---
   return (
-    <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", fontSize: `${fontScale * 100}%` }}>
+    <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", zoom: fontScale !== 1 ? fontScale : undefined }}>
 
       {/* HEADER */}
       <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50, gap: 6 }}>
