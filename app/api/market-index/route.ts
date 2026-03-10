@@ -3,31 +3,27 @@ import { NextResponse } from "next/server";
 export async function GET() {
   const indices: Record<string, { changeRate: number }> = {};
 
-  try {
-    const res = await fetch(
-      "https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:KOSPI,SERVICE_INDEX:KOSDAQ",
-      { headers: { "User-Agent": "Mozilla/5.0" } }
-    );
-    const data = await res.json();
-    if (data?.result?.areas) {
-      for (const area of data.result.areas) {
-        if (area.datas) {
-          for (const d of area.datas) {
-            if (d.cd === "KOSPI" || d.cd === "KOSDAQ") {
-              // cr is change rate: 0.02 = 0.02%
-              // rf: "2"=up, "5"=down
-              let rate = d.cr || 0;
-              if (d.rf === "5") rate = -Math.abs(rate);
-              else if (d.rf === "2") rate = Math.abs(rate);
-              indices[d.cd] = { changeRate: Math.round(rate * 100) / 100 };
-            }
-          }
-        }
+  // Fetch KOSPI and KOSDAQ separately to ensure both work
+  for (const cd of ["KOSPI", "KOSDAQ"]) {
+    try {
+      const res = await fetch(
+        `https://polling.finance.naver.com/api/realtime?query=SERVICE_INDEX:${cd}`,
+        { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store" }
+      );
+      const data = await res.json();
+      const datas = data?.result?.areas?.[0]?.datas;
+      if (datas && datas.length > 0) {
+        const d = datas[0];
+        // cr = change rate (e.g. 4.90 means 4.90%)
+        // rf: "2" = up, "5" = down
+        const cr = typeof d.cr === "number" ? d.cr : parseFloat(d.cr) || 0;
+        const rate = d.rf === "5" ? -Math.abs(cr) : Math.abs(cr);
+        indices[cd] = { changeRate: Math.round(rate * 100) / 100 };
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
   return NextResponse.json(indices, {
-    headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=120" },
+    headers: { "Cache-Control": "s-maxage=30, stale-while-revalidate=60" },
   });
 }
