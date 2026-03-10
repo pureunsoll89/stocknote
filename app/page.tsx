@@ -95,6 +95,8 @@ export default function Home() {
   const [fontScale, setFontScale] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+  const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
+  const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
@@ -1006,76 +1008,44 @@ export default function Home() {
         {/* ============ TRADES ============ */}
         {view === "trades" && <div>
           {!trades.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569", fontSize: 14 }}>거래내역이 없습니다</div>}
-          {(() => {
-            const sorted = [...trades].sort((a, b) => { const d = b.trade_date.localeCompare(a.trade_date); return d !== 0 ? d : b.id.localeCompare(a.id); });
-            const months: Record<string, Trade[]> = {};
-            sorted.forEach(t => { const m = t.trade_date.slice(0, 7); if (!months[m]) months[m] = []; months[m].push(t); });
-            const monthKeys = Object.keys(months).sort((a, b) => b.localeCompare(a));
-            return monthKeys.map(monthKey => {
-              const monthTrades = months[monthKey];
-              const [y, m] = monthKey.split("-");
-              const label = `${y}년 ${parseInt(m)}월`;
-              const isOpen = expandedMonths.has(monthKey);
-              const toggleMonth = () => setExpandedMonths(prev => { const next = new Set(prev); if (next.has(monthKey)) next.delete(monthKey); else next.add(monthKey); return next; });
-              const buyTotal = monthTrades.filter(t => t.side === "BUY").reduce((s, t) => s + t.quantity * t.price, 0);
-              const sellTotal = monthTrades.filter(t => t.side === "SELL").reduce((s, t) => s + t.quantity * t.price, 0);
-              return (
-                <div key={monthKey} style={{ marginBottom: 8 }}>
-                  <button onClick={toggleMonth} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: "#e2e8f0" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
-                      <span style={{ fontSize: 11, color: "#64748b" }}>{monthTrades.length}건</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      {buyTotal > 0 && <span style={{ fontSize: 11, color: "#ef4444" }}>매수 {fmt(buyTotal)}원</span>}
-                      {sellTotal > 0 && <span style={{ fontSize: 11, color: "#3b82f6" }}>매도 {fmt(sellTotal)}원</span>}
-                      <span style={{ fontSize: 12, color: "#64748b" }}>{isOpen ? "▲" : "▼"}</span>
-                    </div>
-                  </button>
-                  {isOpen && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                      {(() => {
-                        // Group consecutive 추가매수 by instrument
-                        const addBuysByInst: Record<string, Trade[]> = {};
-                        const normalTrades: Trade[] = [];
-                        monthTrades.forEach(t => {
-                          if (t.note?.trim() === "추가 매수") {
-                            if (!addBuysByInst[t.instrument_id]) addBuysByInst[t.instrument_id] = [];
-                            addBuysByInst[t.instrument_id].push(t);
-                          } else {
-                            normalTrades.push(t);
-                          }
-                        });
+          {trades.length > 0 && <>
+            {/* View Mode Toggle */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3 }}>
+              {([["date","날짜별"],["stock","종목별"]] as const).map(([k,l]) => (
+                <button key={k} onClick={() => setTradesViewMode(k)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: tradesViewMode === k ? 700 : 500, background: tradesViewMode === k ? "rgba(255,255,255,0.08)" : "transparent", color: tradesViewMode === k ? "#f1f5f9" : "#64748b", cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
 
-                        // Render grouped add buys
-                        const renderedAddBuyGroups = Object.entries(addBuysByInst).map(([instId, grpTrades]) => {
-                          const inst = instruments.find(i => i.id === instId);
-                          const totalAmt = grpTrades.reduce((s, t) => s + t.quantity * t.price, 0);
-                          return (
-                            <div key={`addgrp-${instId}`} style={{ ...cs, padding: "10px 14px" }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "rgba(239,68,68,0.12)", color: "#ef4444" }}>추가매수</span>
-                                  <span style={{ fontSize: 13, fontWeight: 700 }}>{inst?.name}</span>
-                                  <span style={{ fontSize: 11, color: "#64748b" }}>{grpTrades.length}건</span>
-                                </div>
-                                <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(totalAmt)}원</span>
-                              </div>
-                              <div style={{ paddingLeft: 38 }}>
-                                {grpTrades.map(t => (
-                                  <div key={t.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", padding: "2px 0" }}>
-                                    <span>{t.trade_date}</span>
-                                    <span>{t.quantity}주 × {fmt(t.price)}원 = {fmt(t.quantity * t.price)}원</span>
-                                    <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ background: "none", border: "none", color: "#475569", fontSize: 10, cursor: "pointer" }}>수정</button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        });
-
-                        // Render normal trades
-                        const renderedNormal = normalTrades.map(t => {
+            {/* DATE VIEW */}
+            {tradesViewMode === "date" && (() => {
+              const sorted = [...trades].sort((a, b) => { const d = b.trade_date.localeCompare(a.trade_date); return d !== 0 ? d : b.id.localeCompare(a.id); });
+              const months: Record<string, Trade[]> = {};
+              sorted.forEach(t => { const m = t.trade_date.slice(0, 7); if (!months[m]) months[m] = []; months[m].push(t); });
+              const monthKeys = Object.keys(months).sort((a, b) => b.localeCompare(a));
+              return monthKeys.map(monthKey => {
+                const monthTrades = months[monthKey];
+                const [y, m] = monthKey.split("-");
+                const label = `${y}년 ${parseInt(m)}월`;
+                const isOpen = expandedMonths.has(monthKey);
+                const toggleMonth = () => setExpandedMonths(prev => { const next = new Set(prev); if (next.has(monthKey)) next.delete(monthKey); else next.add(monthKey); return next; });
+                const buyTotal = monthTrades.filter(t => t.side === "BUY").reduce((s, t) => s + t.quantity * t.price, 0);
+                const sellTotal = monthTrades.filter(t => t.side === "SELL").reduce((s, t) => s + t.quantity * t.price, 0);
+                return (
+                  <div key={monthKey} style={{ marginBottom: 8 }}>
+                    <button onClick={toggleMonth} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: "#e2e8f0" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
+                        <span style={{ fontSize: 11, color: "#64748b" }}>{monthTrades.length}건</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        {buyTotal > 0 && <span style={{ fontSize: 11, color: "#ef4444" }}>매수 {fmt(buyTotal)}원</span>}
+                        {sellTotal > 0 && <span style={{ fontSize: 11, color: "#3b82f6" }}>매도 {fmt(sellTotal)}원</span>}
+                        <span style={{ fontSize: 12, color: "#64748b" }}>{isOpen ? "▲" : "▼"}</span>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                        {monthTrades.map(t => {
                           const inst = instruments.find(i => i.id === t.instrument_id); const hm = !!t.note?.trim(); const isEd = editTrade?.id === t.id;
                           if (isEd) return (
                             <div key={t.id} style={{ ...cs, padding: 16, border: "1px solid rgba(124,58,237,0.25)" }}>
@@ -1120,17 +1090,80 @@ export default function Home() {
                               {hm && <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, background: "rgba(255,255,255,0.02)", borderLeft: `3px solid ${t.side === "BUY" ? "#ef4444" : "#3b82f6"}` }}><div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>{t.note}</div></div>}
                             </div>
                           );
-                        });
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
 
-                        return [...renderedNormal, ...renderedAddBuyGroups];
-                      })()}
-                    </div>
-                  )}
-                </div>
-              );
-            });
-          })()}
+            {/* STOCK VIEW */}
+            {tradesViewMode === "stock" && (() => {
+              const byInst: Record<string, { inst: Instrument; trades: Trade[] }> = {};
+              trades.forEach(t => {
+                const inst = instruments.find(i => i.id === t.instrument_id);
+                if (!inst) return;
+                if (!byInst[t.instrument_id]) byInst[t.instrument_id] = { inst, trades: [] };
+                byInst[t.instrument_id].trades.push(t);
+              });
+              const groups = Object.values(byInst).sort((a, b) => b.trades.length - a.trades.length);
+              return groups.map(({ inst, trades: instTr }) => {
+                const isOpen = expandedStocks.has(inst.id);
+                const toggleStock = () => setExpandedStocks(prev => { const next = new Set(prev); if (next.has(inst.id)) next.delete(inst.id); else next.add(inst.id); return next; });
+                const sorted = [...instTr].sort((a, b) => b.trade_date.localeCompare(a.trade_date));
+                const buyCount = sorted.filter(t => t.side === "BUY").length;
+                const sellCount = sorted.filter(t => t.side === "SELL").length;
+                const buyTotal = sorted.filter(t => t.side === "BUY").reduce((s, t) => s + t.quantity * t.price, 0);
+                const sellTotal = sorted.filter(t => t.side === "SELL").reduce((s, t) => s + t.quantity * t.price, 0);
+                return (
+                  <div key={inst.id} style={{ marginBottom: 8 }}>
+                    <button onClick={toggleStock} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: "#e2e8f0" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${inst.symbol}.png`} alt={inst.name} onError={(e: any) => { e.target.style.display="none"; }} style={{ width: 24, height: 24, borderRadius: 6 }} />
+                        <span style={{ fontSize: 13, fontWeight: 700 }}>{inst.name}</span>
+                        <span style={{ fontSize: 11, color: "#64748b" }}>{sorted.length}건</span>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 11, color: "#ef4444" }}>매수{buyCount}</span>
+                        <span style={{ fontSize: 11, color: "#3b82f6" }}>매도{sellCount}</span>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>{isOpen ? "▲" : "▼"}</span>
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6, padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b", marginBottom: 4, paddingBottom: 4, borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
+                          <span>총 매수 {fmt(buyTotal)}원</span>
+                          <span>총 매도 {fmt(sellTotal)}원</span>
+                        </div>
+                        {sorted.map(t => {
+                          const hm = !!t.note?.trim();
+                          return (
+                            <div key={t.id} style={{ display: "flex", flexDirection: "column", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 3, background: t.side === "BUY" ? "rgba(239,68,68,0.12)" : "rgba(59,130,246,0.12)", color: t.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{t.side === "BUY" ? "매수" : "매도"}</span>
+                                  <span style={{ fontSize: 11, color: "#64748b" }}>{t.trade_date}</span>
+                                  <span style={{ fontSize: 11, color: "#94a3b8" }}>{t.quantity}주 × {fmt(t.price)}원</span>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 600 }}>{fmt(t.quantity * t.price)}원</span>
+                                  <button onClick={() => setEditTrade({ ...t, quantity: String(t.quantity), price: String(t.price) })} style={{ background: "none", border: "none", color: "#475569", fontSize: 10, cursor: "pointer" }}>수정</button>
+                                </div>
+                              </div>
+                              {hm && <div style={{ fontSize: 11, color: "#8b9dc3", marginTop: 2, paddingLeft: 24 }}>{t.note}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              });
+            })()}
+          </>}
         </div>}
+
 
         {/* ============ GLOBAL INDICATORS ============ */}
         {view === "global" && <div>
