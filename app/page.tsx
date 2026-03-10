@@ -1053,11 +1053,11 @@ export default function Home() {
                 { key: "usdkrw", icon: "💱", desc: "원/달러 환율" },
                 { key: "dxy", icon: "💵", desc: "달러 강세 지표" },
                 { key: "us10y", icon: "📊", desc: "미국 국채 수익률" },
-                { key: "brent", icon: "🛢️", desc: "국제 유가 (브렌트)" },
-                { key: "wti", icon: "🛢️", desc: "국제 유가 (텍사스)" },
+                { key: "gold", icon: "🥇", desc: "안전자산" },
+                { key: "brent", icon: "🛢️", desc: "국제 유가 선물" },
+                { key: "wti", icon: "🛢️", desc: "국제 유가 선물" },
                 { key: "vix", icon: "😱", desc: "시장 변동성" },
                 { key: "sox", icon: "🔧", desc: "반도체 업종" },
-                { key: "gold", icon: "🥇", desc: "안전자산" },
               ].map(({ key, icon, desc }) => {
                 const d = globalData[key];
                 if (!d) return null;
