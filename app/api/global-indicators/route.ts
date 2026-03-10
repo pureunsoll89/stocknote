@@ -4,7 +4,7 @@ async function fetchYahoo(symbol: string) {
   try {
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
-      { headers: { "User-Agent": "Mozilla/5.0" } }
+      { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store" }
     );
     const data = await res.json();
     const meta = data.chart?.result?.[0]?.meta;
@@ -50,6 +50,6 @@ export async function GET() {
   }
 
   return NextResponse.json(results, {
-    headers: { "Cache-Control": "s-maxage=180, stale-while-revalidate=360" },
+    headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=120" },
   });
 }

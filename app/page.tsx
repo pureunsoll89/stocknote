@@ -92,6 +92,8 @@ export default function Home() {
   const [noteText, setNoteText] = useState("");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [isMobile, setIsMobile] = useState(false);
+  const [fontScale, setFontScale] = useState(1);
+  const [showSettings, setShowSettings] = useState(false);
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
@@ -101,6 +103,8 @@ export default function Home() {
     const check = () => setIsMobile(window.innerWidth <= 768);
     check();
     window.addEventListener("resize", check);
+    const saved = localStorage.getItem("stocknote_fontScale");
+    if (saved) setFontScale(parseFloat(saved));
     return () => window.removeEventListener("resize", check);
   }, []);
 
@@ -522,7 +526,7 @@ export default function Home() {
 
   // --- MAIN APP ---
   return (
-    <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", fontSize: `${fontScale * 100}%` }}>
 
       {/* HEADER */}
       <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50, gap: 6 }}>
@@ -541,8 +545,23 @@ export default function Home() {
             ))}
           </div>
         )}
-        <button onClick={signOut} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto" }}>로그아웃</button>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", flex: "0 0 auto" }}>
+          <button onClick={() => setShowSettings(!showSettings)} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: showSettings ? "rgba(255,255,255,0.08)" : "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap" }}>⚙️</button>
+          <button onClick={signOut} style={{ padding: "5px 8px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, cursor: "pointer", whiteSpace: "nowrap", flex: "0 0 auto" }}>로그아웃</button>
+        </div>
       </header>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div style={{ padding: "12px 16px", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>글자 크기</span>
+            {[{ v: 0.85, l: "작게" }, { v: 1, l: "보통" }, { v: 1.15, l: "크게" }, { v: 1.3, l: "아주 크게" }].map(({ v, l }) => (
+              <button key={v} onClick={() => { setFontScale(v); localStorage.setItem("stocknote_fontScale", String(v)); }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 11, fontWeight: fontScale === v ? 700 : 500, background: fontScale === v ? "rgba(124,58,237,0.15)" : "rgba(255,255,255,0.04)", color: fontScale === v ? "#a78bfa" : "#64748b", cursor: "pointer" }}>{l}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <main style={{ maxWidth: 680, margin: "0 auto", padding: "16px 12px 60px" }}>
 
@@ -1125,6 +1144,7 @@ export default function Home() {
         <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>주식노트</div>
         <div style={{ fontSize: 11, color: "#334155", marginTop: 4 }}>손실을 줄이는 투자 습관</div>
         <a href="https://forms.gle/V9kKgRmRq6iE84ye7" target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, padding: "6px 16px", borderRadius: 6, border: "1px solid rgba(124,58,237,0.2)", background: "rgba(124,58,237,0.06)", color: "#a78bfa", fontSize: 11, fontWeight: 600, textDecoration: "none" }}>피드백하기</a>
+        <a href="https://open.kakao.com/o/g906MGki" target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, marginLeft: 8, padding: "6px 16px", borderRadius: 6, border: "1px solid rgba(251,191,36,0.2)", background: "rgba(251,191,36,0.06)", color: "#fbbf24", fontSize: 11, fontWeight: 600, textDecoration: "none" }}>주식노트 채팅방</a>
       </footer>
     </div>
   );
