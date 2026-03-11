@@ -165,11 +165,15 @@ export default function Home() {
       if (pos && pos.avgPrice > 0) {
         candle.createPriceLine({
           price: pos.avgPrice,
-          color: '#2dd4bf', // 튀는 민트색 계열 (원하시는 색상 코드로 변경 가능)
-          lineWidth: 2,
-          lineStyle: 2, // 2: 점선(Dashed) 스타일을 의미합니다. (0은 실선)
+          color: '#2dd4bf', // 가로선 색상 (민트색)
+          lineWidth: 1,
+          lineStyle: 3,     // 점선
           axisLabelVisible: true,
-          title: '평단가',
+          title: '',        // 차트 안쪽 글자 제거
+          
+          // 👇 [추가] 우측 축에 뜨는 숫자표의 색상을 완전히 눈에 띄게 변경
+          axisLabelColor: '#2dd4bf',      // 숫자표 배경을 민트색으로
+          axisLabelTextColor: '#080c14',  // 숫자표 안의 글씨를 어두운 색으로 (가독성)
         });
       }
       
