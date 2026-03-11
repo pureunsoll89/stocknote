@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 
-// [핵심 1] Next.js가 이 API를 정적 파일처럼 캐싱하는 것을 차단
-export const dynamic = "force-dynamic";
+// [핵심 1] 이 API 라우트의 전체 결과를 60초 동안 캐싱 (ISR 모드 활성화)
+export const revalidate = 60; 
 
 async function fetchYahoo(symbol: string) {
   try {
-    // [핵심 2] Yahoo API 단의 CDN 캐싱을 피하기 위해 타임스탬프 추가
-    const timestamp = Date.now();
+    // [핵심 2] 타임스탬프 제거: Next.js가 동일한 요청으로 인식하고 캐싱할 수 있도록 원래 URL 사용
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d&_=${timestamp}`,
-      { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store" }
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
+      { 
+        headers: { "User-Agent": "Mozilla/5.0" },
+        // 개별 fetch 단위가 아닌 파일 전체(revalidate=60)로 캐싱하므로 옵션을 비워둡니다.
+      }
     );
     const data = await res.json();
     const meta = data.chart?.result?.[0]?.meta;
@@ -47,7 +49,6 @@ export async function GET() {
     }
   }));
 
-  // Gold: convert $/oz to 원/g
   if (results["gold"]?.price && results["usdkrw"]?.price) {
     const usdPerOz = results["gold"].price;
     const krwRate = results["usdkrw"].price;
@@ -55,8 +56,5 @@ export async function GET() {
     results["gold"].price = Math.round((usdPerOz / 31.1035) * krwRate);
   }
 
-  return NextResponse.json(results, {
-    // 60초 캐싱, 이후 120초간 백그라운드 재검증
-    headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=120" },
-  });
+  return NextResponse.json(results);
 }
