@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 
+// [핵심 1] Next.js가 이 API를 정적 파일처럼 캐싱하는 것을 차단
+export const dynamic = "force-dynamic";
+
 async function fetchYahoo(symbol: string) {
   try {
+    // [핵심 2] Yahoo API 단의 CDN 캐싱을 피하기 위해 타임스탬프 추가
+    const timestamp = Date.now();
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d&_=${timestamp}`,
       { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store" }
     );
     const data = await res.json();
@@ -16,6 +21,7 @@ async function fetchYahoo(symbol: string) {
 
     return { price: current, change: Math.round(change * 100) / 100, prevClose };
   } catch (e) {
+    console.error(`Failed to fetch Yahoo data for ${symbol}:`, e);
     return null;
   }
 }
@@ -50,6 +56,7 @@ export async function GET() {
   }
 
   return NextResponse.json(results, {
+    // 60초 캐싱, 이후 120초간 백그라운드 재검증
     headers: { "Cache-Control": "s-maxage=60, stale-while-revalidate=120" },
   });
 }
