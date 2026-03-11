@@ -162,6 +162,17 @@ export default function Home() {
       });
       candle.setData(data.map((d: any) => ({ time: d.time, open: d.open, high: d.high, low: d.low, close: d.close })));
 
+      if (pos && pos.avgPrice > 0) {
+        candle.createPriceLine({
+          price: pos.avgPrice,
+          color: '#2dd4bf', // 튀는 민트색 계열 (원하시는 색상 코드로 변경 가능)
+          lineWidth: 2,
+          lineStyle: 2, // 2: 점선(Dashed) 스타일을 의미합니다. (0은 실선)
+          axisLabelVisible: true,
+          title: '평단가',
+        });
+      }
+      
       const vol = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol" });
       vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
       vol.setData(data.map((d: any) => ({ time: d.time, value: d.volume, color: d.close >= d.open ? "rgba(239,68,68,0.2)" : "rgba(59,130,246,0.2)" })));
