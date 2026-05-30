@@ -10,6 +10,30 @@ const supabase = createClient(
 
 interface Instrument { id: string; symbol: string; name: string; market: string; memo?: string; }
 interface Trade { id: string; instrument_id: string; trade_date: string; side: string; quantity: number; price: number; fee: number; note: string; }
+interface CashTxn { id: string; txn_date: string; type: string; amount: number; note: string; }
+
+// ─────────── Helpers ───────────
+function isETFName(name: string) {
+  return ["KODEX", "TIGER", "ARIRANG", "KBSTAR", "SOL", "ACE", "HANARO"].some(p => name.startsWith(p));
+}
+function sellFeeOf(amount: number, isETF: boolean) {
+  return Math.round(amount * (isETF ? 0.0003 : 0.0021));
+}
+// 현재 현금 = 입금 - 출금 - 매수금액 + (매도금액 - 매도수수료)
+function calculateCash(cashTxns: CashTxn[], trades: Trade[], instruments: Instrument[]) {
+  let cash = 0;
+  for (const c of cashTxns) cash += c.type === "DEPOSIT" ? c.amount : -c.amount;
+  for (const t of trades) {
+    const amount = t.quantity * t.price;
+    if (t.side === "BUY") cash -= amount;
+    else {
+      const inst = instruments.find(i => i.id === t.instrument_id);
+      const isETF = inst ? isETFName(inst.name) : false;
+      cash += amount - sellFeeOf(amount, isETF);
+    }
+  }
+  return cash;
+}
 
 function calculatePosition(trades: Trade[], market?: string) {
   let totalBuyQty = 0, totalBuyAmt = 0, realizedPnl = 0, firstBuyDate = "";
@@ -27,10 +51,7 @@ function calculatePosition(trades: Trade[], market?: string) {
       realizedPnl += (t.price - avg) * t.quantity - sellFee;
       totalBuyQty -= t.quantity;
       totalBuyAmt = totalBuyQty > 0 ? avg * totalBuyQty : 0;
-      // Position closed — reset for new position
-      if (totalBuyQty <= 0) {
-        totalBuyQty = 0; totalBuyAmt = 0; firstBuyDate = "";
-      }
+      if (totalBuyQty <= 0) { totalBuyQty = 0; totalBuyAmt = 0; firstBuyDate = ""; }
     }
   }
   return { totalQty: totalBuyQty, avgPrice: totalBuyQty > 0 ? Math.round(totalBuyAmt / totalBuyQty) : 0, realizedPnl: Math.round(realizedPnl), firstBuyDate };
@@ -39,7 +60,6 @@ function calculatePosition(trades: Trade[], market?: string) {
 function holdingDays(d: string) { return d ? Math.floor((Date.now() - new Date(d).getTime()) / 86400000) : 0; }
 function holdingWeeks(d: string) { return `${holdingDays(d)}일`; }
 
-// Check if instrument has an active (non-zero) position
 function hasActivePosition(trades: Trade[], instrumentId: string): boolean {
   const it = trades.filter(t => t.instrument_id === instrumentId);
   if (!it.length) return false;
@@ -51,6 +71,7 @@ function hasActivePosition(trades: Trade[], instrumentId: string): boolean {
 function getAlertLevel(r: number) { return r >= 0.05 ? "OUTPERFORM" : r >= -0.05 ? "NORMAL" : r >= -0.12 ? "WARNING" : "DANGER"; }
 function fmt(n: number) { return new Intl.NumberFormat("ko-KR").format(n); }
 const BENCH_RET: Record<string, number> = { KOSPI: 0.054, KOSDAQ: 0.038 };
+const ALLOC_COLORS = ["#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#06b6d4", "#f43f5e", "#a78bfa", "#fb923c", "#22d3ee"];
 
 const IconMemo = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
 const IconWarn = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>;
@@ -60,6 +81,7 @@ const IconBack = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="non
 export default function Home() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [cashTxns, setCashTxns] = useState<CashTxn[]>([]);
   const [loading, setLoading] = useState(true);
   const [priceLoading, setPriceLoading] = useState(false);
   const [view, setView] = useState("dashboard");
@@ -67,6 +89,7 @@ export default function Home() {
   const [selInst, setSelInst] = useState<string | null>(null);
   const [editTrade, setEditTrade] = useState<any>(null);
   const [form, setForm] = useState({ instrument_id: "", trade_date: new Date().toISOString().split("T")[0], side: "BUY", quantity: "", price: "", note: "" });
+  const [cashForm, setCashForm] = useState({ txn_date: new Date().toISOString().split("T")[0], type: "DEPOSIT", amount: "", note: "" });
   const [showNewInst, setShowNewInst] = useState(false);
   const [newInst, setNewInst] = useState({ symbol: "", name: "", market: "KOSPI" });
   const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
@@ -134,7 +157,6 @@ export default function Home() {
       const data = await res.json();
       if (cancelled || !data.length) return;
 
-      // Calculate high since first buy
       const pos = positions.find((p: any) => p.id === selInst);
       const firstBuyDate = pos?.firstBuyDate || "";
       const dataSinceBuy = firstBuyDate ? data.filter((d: any) => d.time >= firstBuyDate) : data;
@@ -165,18 +187,16 @@ export default function Home() {
       if (pos && pos.avgPrice > 0) {
         candle.createPriceLine({
           price: pos.avgPrice,
-          color: '#2dd4bf', // 가로선 색상 (민트색)
+          color: '#2dd4bf',
           lineWidth: 1,
-          lineStyle: 3,     // 점선
+          lineStyle: 3,
           axisLabelVisible: true,
-          title: '',        // 차트 안쪽 글자 제거
-          
-          // 👇 [추가] 우측 축에 뜨는 숫자표의 색상을 완전히 눈에 띄게 변경
-          axisLabelColor: '#2dd4bf',      // 숫자표 배경을 민트색으로
-          axisLabelTextColor: '#080c14',  // 숫자표 안의 글씨를 어두운 색으로 (가독성)
+          title: '',
+          axisLabelColor: '#2dd4bf',
+          axisLabelTextColor: '#080c14',
         });
       }
-      
+
       const vol = chart.addHistogramSeries({ priceFormat: { type: "volume" }, priceScaleId: "vol" });
       vol.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
       vol.setData(data.map((d: any) => ({ time: d.time, value: d.volume, color: d.close >= d.open ? "rgba(239,68,68,0.2)" : "rgba(59,130,246,0.2)" })));
@@ -197,27 +217,16 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selInst, chartType, view]);
 
-  // Browser back/forward support
+  // Browser back/forward
   useEffect(() => {
     const handlePop = () => {
       const hash = window.location.hash;
-      if (hash.startsWith("#stock/")) {
-        const id = hash.replace("#stock/", "");
-        setSelInst(id);
-        setView("detail");
-      } else if (hash === "#trades") {
-        setView("trades");
-        setSelInst(null);
-      } else if (hash === "#add") {
-        setView("add");
-        setSelInst(null);
-      } else if (hash === "#global") {
-        setView("global");
-        setSelInst(null);
-      } else {
-        setView("dashboard");
-        setSelInst(null);
-      }
+      if (hash.startsWith("#stock/")) { const id = hash.replace("#stock/", ""); setSelInst(id); setView("detail"); }
+      else if (hash === "#trades") { setView("trades"); setSelInst(null); }
+      else if (hash === "#add") { setView("add"); setSelInst(null); }
+      else if (hash === "#cash") { setView("cash"); setSelInst(null); }
+      else if (hash === "#global") { setView("global"); setSelInst(null); }
+      else { setView("dashboard"); setSelInst(null); }
     };
     window.addEventListener("popstate", handlePop);
     return () => window.removeEventListener("popstate", handlePop);
@@ -233,6 +242,8 @@ export default function Home() {
     } else if (v === "add") {
       window.history.pushState(null, "", "#add");
       setForm(f => { const active = hasActivePosition(trades, f.instrument_id); return { ...f, note: f.side === "BUY" && active && !f.note.trim() ? "추가 매수" : f.note }; });
+    } else if (v === "cash") {
+      window.history.pushState(null, "", "#cash");
     } else if (v === "global") {
       window.history.pushState(null, "", "#global");
     } else {
@@ -241,14 +252,10 @@ export default function Home() {
     setView(v);
   }
 
-  function goBack() {
-    window.history.back();
-  }
+  function goBack() { window.history.back(); }
 
   useEffect(() => {
-    if (view === "global") {
-      fetch("/api/global-indicators").then(r => r.json()).then(d => setGlobalData(d)).catch(() => {});
-    }
+    if (view === "global") { fetch("/api/global-indicators").then(r => r.json()).then(d => setGlobalData(d)).catch(() => {}); }
   }, [view]);
 
   useEffect(() => {
@@ -317,14 +324,11 @@ export default function Home() {
   async function signInGoogle() {
     await supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: "https://stocknote-mu.vercel.app" } });
   }
-
   async function signInKakao() {
     await supabase.auth.signInWithOAuth({ provider: "kakao", options: { redirectTo: "https://stocknote-mu.vercel.app", scopes: "profile_nickname profile_image" } });
   }
-
   async function signInEmail() {
-    setAuthError("");
-    setAuthSuccess("");
+    setAuthError(""); setAuthSuccess("");
     if (authMode === "signup") {
       if (authPw !== authPwConfirm) { setAuthError("비밀번호가 일치하지 않습니다"); return; }
       if (authPw.length < 6) { setAuthError("비밀번호는 6자 이상이어야 합니다"); return; }
@@ -336,10 +340,9 @@ export default function Home() {
       if (error) setAuthError(error.message);
     }
   }
-
   async function signOut() {
     await supabase.auth.signOut();
-    setUser(null); setInstruments([]); setTrades([]); setCurrentPrices({});
+    setUser(null); setInstruments([]); setTrades([]); setCashTxns([]); setCurrentPrices({});
   }
 
   async function saveInstMemo(instId: string) {
@@ -347,7 +350,6 @@ export default function Home() {
     setInstruments(p => p.map(i => i.id === instId ? { ...i, memo: memoText } : i));
     setEditingMemo(null);
   }
-
   async function saveTradeNote(tradeId: string) {
     await supabase.from("trades").update({ note: noteText }).eq("id", tradeId);
     setTrades(p => p.map(t => t.id === tradeId ? { ...t, note: noteText } : t));
@@ -355,17 +357,41 @@ export default function Home() {
   }
 
   async function loadData() {
-    try {
-      const mRes = await fetch("/api/market-index");
-      const mData = await mRes.json();
-      setMarketIndex(mData);
-    } catch (e) {}
+    try { const mRes = await fetch("/api/market-index"); const mData = await mRes.json(); setMarketIndex(mData); } catch (e) {}
     setLoading(true);
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) { setLoading(false); return; }
     const { data: i } = await supabase.from("instruments").select("*").eq("user_id", currentUser.id);
     const { data: t } = await supabase.from("trades").select("*").eq("user_id", currentUser.id);
-    setInstruments(i || []); setTrades(t || []);
+    const { data: c } = await supabase.from("cash_transactions").select("*").eq("user_id", currentUser.id);
+    let cashList: CashTxn[] = c || [];
+
+    // ─── 자동 보정: 현금 기록이 0건이고 거래가 있으면, 매수 누적액에서 매도 수령액을 뺀 만큼 '초기 보정' 입금 1건 생성 ───
+    if (cashList.length === 0 && t && t.length > 0 && i) {
+      let initDeposit = 0;
+      for (const trade of t) {
+        const amount = trade.quantity * trade.price;
+        if (trade.side === "BUY") initDeposit += amount;
+        else {
+          const inst = i.find((x: any) => x.id === trade.instrument_id);
+          const isETF = inst ? isETFName(inst.name) : false;
+          initDeposit -= amount - sellFeeOf(amount, isETF);
+        }
+      }
+      if (initDeposit > 0) {
+        const earliest = t.reduce((min: string, x: any) => x.trade_date < min ? x.trade_date : min, t[0].trade_date);
+        const { data: initRow } = await supabase.from("cash_transactions").insert({
+          user_id: currentUser.id,
+          txn_date: earliest,
+          type: "DEPOSIT",
+          amount: initDeposit,
+          note: "초기 보정 (기존 매수액 자동 입금)",
+        }).select().single();
+        if (initRow) cashList = [initRow];
+      }
+    }
+
+    setInstruments(i || []); setTrades(t || []); setCashTxns(cashList);
     if (i && i.length > 0) setForm(f => ({ ...f, instrument_id: f.instrument_id || i[0].id }));
     setLoading(false);
 
@@ -388,7 +414,6 @@ export default function Home() {
   async function refreshPrices() {
     if (instruments.length === 0) return;
     setPriceLoading(true);
-    // Refresh market index
     try { const mRes = await fetch("/api/market-index"); const mData = await mRes.json(); setMarketIndex(mData); } catch (e) {}
     const prices: Record<string, number> = {};
     const changes: Record<string, number> = {};
@@ -400,9 +425,7 @@ export default function Home() {
         if (data.changeRate !== undefined) changes[inst.id] = data.changeRate;
       } catch (e) {}
     }));
-    setCurrentPrices(prices);
-    setDayChanges(changes);
-    setPriceLoading(false);
+    setCurrentPrices(prices); setDayChanges(changes); setPriceLoading(false);
   }
 
   async function searchStock(q: string) {
@@ -419,19 +442,9 @@ export default function Home() {
 
   async function selectStock(item: any) {
     const existing = instruments.find(i => i.symbol === item.symbol);
-    if (existing) {
-      setForm(f => ({ ...f, instrument_id: existing.id }));
-      setShowNewInst(false); setSearchQuery(""); setSearchResults([]);
-      return;
-    }
-    const { data } = await supabase.from("instruments").insert({
-      symbol: item.symbol, name: item.name, market: item.market, user_id: user.id,
-    }).select().single();
-    if (data) {
-      setInstruments(p => [...p, data]);
-      setForm(f => ({ ...f, instrument_id: data.id }));
-      setShowNewInst(false); setSearchQuery(""); setSearchResults([]);
-    }
+    if (existing) { setForm(f => ({ ...f, instrument_id: existing.id })); setShowNewInst(false); setSearchQuery(""); setSearchResults([]); return; }
+    const { data } = await supabase.from("instruments").insert({ symbol: item.symbol, name: item.name, market: item.market, user_id: user.id }).select().single();
+    if (data) { setInstruments(p => [...p, data]); setForm(f => ({ ...f, instrument_id: data.id })); setShowNewInst(false); setSearchQuery(""); setSearchResults([]); }
   }
 
   async function addInstrument() {
@@ -457,15 +470,27 @@ export default function Home() {
     if (!error) { setTrades(p => p.filter(t => t.id !== id)); setEditTrade(null); }
   }
 
+  // ─── 입금/출금 ───
+  async function addCashTxn() {
+    if (!cashForm.amount || !user) return;
+    const { data } = await supabase.from("cash_transactions").insert({
+      txn_date: cashForm.txn_date, type: cashForm.type, amount: parseInt(cashForm.amount), note: cashForm.note.trim(), user_id: user.id,
+    }).select().single();
+    if (data) { setCashTxns(p => [...p, data]); setCashForm(f => ({ ...f, amount: "", note: "" })); }
+  }
+  async function delCashTxn(id: string) {
+    const { error } = await supabase.from("cash_transactions").delete().eq("id", id);
+    if (!error) setCashTxns(p => p.filter(c => c.id !== id));
+  }
+
   const positions = useMemo(() => instruments.map(inst => {
     const it = trades.filter(t => t.instrument_id === inst.id); if (!it.length) return null;
-    const isETF = inst.name.startsWith("KODEX") || inst.name.startsWith("TIGER") || inst.name.startsWith("ARIRANG") || inst.name.startsWith("KBSTAR") || inst.name.startsWith("SOL") || inst.name.startsWith("ACE") || inst.name.startsWith("HANARO");
+    const isETF = isETFName(inst.name);
     const pos = calculatePosition(it, isETF ? "ETF" : inst.market); if (pos.totalQty <= 0) return null;
     const cp = currentPrices[inst.id] || 0;
     const stockRet = cp > 0 && pos.avgPrice > 0 ? (cp / pos.avgPrice) - 1 : 0;
     const br = BENCH_RET[inst.market] || 0; const rr = stockRet - br;
     const noMemo = it.filter(t => !t.note?.trim()).length;
-    // Find first buy memo in CURRENT position (after firstBuyDate from calculatePosition)
     const currentTrades = pos.firstBuyDate ? [...it].filter(t => t.trade_date >= pos.firstBuyDate).sort((a, b) => new Date(a.trade_date).getTime() - new Date(b.trade_date).getTime()) : [];
     const fm = currentTrades.find(t => t.side === "BUY" && t.note?.trim() && t.note.trim() !== "추가 매수");
     return { ...inst, ...pos, currentPrice: cp, stockReturn: stockRet, benchReturn: br, relativeReturn: rr, alertLevel: getAlertLevel(rr), evalAmount: cp * pos.totalQty, unrealizedPnl: (cp - pos.avgPrice) * pos.totalQty, tradeCount: it.length, noMemoCount: noMemo, firstMemo: fm?.note || "" };
@@ -473,10 +498,29 @@ export default function Home() {
 
   const allRealizedPnl = useMemo(() => instruments.reduce((sum: number, inst: any) => {
     const it = trades.filter((t: any) => t.instrument_id === inst.id); if (!it.length) return sum;
-    const isETF = inst.name.startsWith("KODEX") || inst.name.startsWith("TIGER") || inst.name.startsWith("ARIRANG") || inst.name.startsWith("KBSTAR") || inst.name.startsWith("SOL") || inst.name.startsWith("ACE") || inst.name.startsWith("HANARO");
+    const isETF = isETFName(inst.name);
     const pos = calculatePosition(it, isETF ? "ETF" : inst.market);
     return sum + pos.realizedPnl;
   }, 0), [instruments, trades]);
+
+  // 현재 현금 잔액
+  const cash = useMemo(() => calculateCash(cashTxns, trades, instruments), [cashTxns, trades, instruments]);
+
+  // 현금 흐름 내역
+  const cashBreakdown = useMemo(() => {
+    const totalDeposit = cashTxns.filter(c => c.type === "DEPOSIT").reduce((s, c) => s + c.amount, 0);
+    const totalWithdraw = cashTxns.filter(c => c.type === "WITHDRAW").reduce((s, c) => s + c.amount, 0);
+    let buyUsed = 0, sellRecovered = 0;
+    for (const t of trades) {
+      const amount = t.quantity * t.price;
+      if (t.side === "BUY") buyUsed += amount;
+      else {
+        const inst = instruments.find(i => i.id === t.instrument_id);
+        sellRecovered += amount - sellFeeOf(amount, inst ? isETFName(inst.name) : false);
+      }
+    }
+    return { totalDeposit, totalWithdraw, buyUsed, sellRecovered };
+  }, [cashTxns, trades, instruments]);
 
   const totals = useMemo(() => {
     const totalInvested = positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
@@ -488,6 +532,30 @@ export default function Home() {
     const totalReturnRate = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
     return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
   }, [positions, trades, allRealizedPnl]);
+
+  const totalAssets = totals.totalEval + cash;
+
+  // 자산 비중 (각 종목 + 현금)
+  const allocation = useMemo(() => {
+    const cashPositive = Math.max(0, cash);
+    const denom = totals.totalEval + cashPositive;
+    if (denom <= 0) return { items: [] as any[], cashWeight: 0, denom: 0 };
+    const items = [...positions]
+      .map((p: any) => ({ id: p.id, name: p.name, symbol: p.symbol, amount: p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty }))
+      .sort((a, b) => b.amount - a.amount)
+      .map((p, i) => ({ ...p, weight: p.amount / denom, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
+    return { items, cashWeight: cashPositive / denom, denom };
+  }, [positions, cash, totals.totalEval]);
+
+  // 매매 후 예상 현금
+  const projectedCash = useMemo(() => {
+    if (!form.quantity || !form.price) return null;
+    const amount = parseInt(form.quantity) * parseInt(form.price);
+    if (!amount) return null;
+    if (form.side === "BUY") return cash - amount;
+    const inst = instruments.find(i => i.id === form.instrument_id);
+    return cash + amount - sellFeeOf(amount, inst ? isETFName(inst.name) : false);
+  }, [form, cash, instruments]);
 
   const instTrades = useMemo(() => selInst ? trades.filter(t => t.instrument_id === selInst).sort((a, b) => { const d = new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime(); return d !== 0 ? d : a.id.localeCompare(b.id); }) : [], [trades, selInst]);
   const selPos = positions.find((p: any) => p.id === selInst);
@@ -545,6 +613,7 @@ export default function Home() {
   // --- MAIN APP ---
   return (
     <div style={{ minHeight: "100vh", background: "#080c14", color: "#e2e8f0", fontFamily: "'Pretendard','Apple SD Gothic Neo',-apple-system,sans-serif", zoom: fontScale !== 1 ? fontScale : undefined }}>
+      <style>{`.navscroll::-webkit-scrollbar{display:none}.navscroll{-ms-overflow-style:none;scrollbar-width:none}`}</style>
 
       {/* HEADER */}
       <header style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "10px 12px", display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(8,12,20,0.95)", position: "sticky", top: 0, zIndex: 50, gap: 6 }}>
@@ -557,9 +626,9 @@ export default function Home() {
           </div>
         )}
         {view !== "detail" && (
-          <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 2 }}>
-            {[{ k: "dashboard", l: "보유현황" }, { k: "trades", l: "거래내역" }, { k: "global", l: "국제지표" }, { k: "add", l: "+ 기록" }].map(t => (
-              <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 10px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap" }}>{t.l}</button>
+          <div className="navscroll" style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 2, overflowX: "auto", minWidth: 0 }}>
+            {[{ k: "dashboard", l: "보유현황" }, { k: "cash", l: "현금" }, { k: "trades", l: "거래내역" }, { k: "global", l: "국제지표" }, { k: "add", l: "+ 기록" }].map(t => (
+              <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 9px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap", flex: "0 0 auto" }}>{t.l}</button>
             ))}
           </div>
         )}
@@ -590,8 +659,7 @@ export default function Home() {
           {(marketIndex["KOSPI"] || marketIndex["KOSDAQ"]) && (
             <div style={{ display: "flex", gap: 12, marginBottom: 12, padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
               {["KOSPI", "KOSDAQ"].map(key => {
-                const idx = marketIndex[key];
-                if (!idx) return null;
+                const idx = marketIndex[key]; if (!idx) return null;
                 const isUp = idx.changeRate >= 0;
                 return (
                   <div key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -604,15 +672,16 @@ export default function Home() {
             </div>
           )}
 
-          {/* Summary Card - 증권앱 스타일 */}
-          {(positions.length > 0 || allRealizedPnl !== 0) && (
+          {/* Summary Card */}
+          {(positions.length > 0 || allRealizedPnl !== 0 || cashTxns.length > 0) && (
             <div style={{ ...cs, marginBottom: 16, padding: "20px 20px 16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                 <div>
-                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>평가금액</div>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.5px" }}>{fmt(totals.totalEval)}원</div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>총 자산</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.5px" }}>{fmt(totalAssets)}원</div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>평가 {fmt(totals.totalEval)}원 · 현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b></div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: totals.totalUnrealized >= 0 ? "#ef4444" : "#3b82f6", marginTop: 4 }}>
-                    {fmt(Math.abs(totals.totalUnrealized))}원 &nbsp;{totals.totalReturnRate >= 0 ? "+" : ""}{totals.totalReturnRate.toFixed(2)}%
+                    평가손익 {totals.totalUnrealized >= 0 ? "+" : "-"}{fmt(Math.abs(totals.totalUnrealized))}원 &nbsp;{totals.totalReturnRate >= 0 ? "+" : ""}{totals.totalReturnRate.toFixed(2)}%
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
@@ -626,6 +695,36 @@ export default function Home() {
                 <span>투자금 {fmt(totals.totalInvested)}원</span>
                 <span>기록률 <b style={{ color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</b></span>
                 <span>{positions.length}종목 · {totals.totalTrades}건</span>
+              </div>
+            </div>
+          )}
+
+          {/* Asset Allocation */}
+          {(allocation.items.length > 0 || allocation.cashWeight > 0) && (
+            <div style={{ ...cs, marginBottom: 16, padding: "16px 18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>📊 자산 비중</span>
+                <span style={{ fontSize: 11, color: "#64748b" }}>총 {fmt(Math.round(allocation.denom))}원</span>
+              </div>
+              <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", marginBottom: 14, background: "rgba(255,255,255,0.04)" }}>
+                {allocation.items.map((it: any) => <div key={it.id} title={it.name} style={{ width: `${it.weight * 100}%`, background: it.color }} />)}
+                {allocation.cashWeight > 0 && <div title="현금" style={{ width: `${allocation.cashWeight * 100}%`, background: "#2dd4bf" }} />}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {allocation.items.map((it: any) => (
+                  <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 3, background: it.color, flex: "0 0 10px" }} />
+                    <span style={{ fontSize: 12, color: "#e2e8f0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.round(it.amount))}원</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9", flex: "0 0 52px", textAlign: "right" }}>{(it.weight * 100).toFixed(1)}%</span>
+                  </div>
+                ))}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 3, background: "#2dd4bf", flex: "0 0 10px" }} />
+                  <span style={{ fontSize: 12, color: "#e2e8f0", flex: 1 }}>현금</span>
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.max(0, cash))}원</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#2dd4bf", flex: "0 0 52px", textAlign: "right" }}>{(allocation.cashWeight * 100).toFixed(1)}%</span>
+                </div>
               </div>
             </div>
           )}
@@ -666,7 +765,6 @@ export default function Home() {
 
               if (isMobile) return (
                 <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "12px 14px", cursor: "pointer" }}>
-                  {/* Row 1: Logo+Name left, Eval right */}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                     <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                       <div style={{ flex: "0 0 36px" }}>
@@ -688,12 +786,10 @@ export default function Home() {
                       <button onClick={toggleExpand} style={{ background: "none", border: "none", color: "#64748b", cursor: "pointer", padding: "2px", fontSize: 12, lineHeight: 1, marginTop: 2 }}>{isExpanded ? "▲" : "▼"}</button>
                     </div>
                   </div>
-                  {/* Row 2: Memo + Reason */}
                   <div style={{ marginTop: 6, paddingLeft: 46, display: "flex", gap: 8 }}>
                     <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
                     <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{p.firstMemo || ""}</div>
                   </div>
-                  {/* Row 3: Toggle area — Price/Index + Counts */}
                   {isExpanded && (
                     <div style={{ marginTop: 8, paddingLeft: 46, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
@@ -713,11 +809,9 @@ export default function Home() {
               return (
               <div key={p.id} onClick={() => navigateTo("detail", p.id)} style={{ ...cs, padding: "12px 14px", cursor: "pointer" }}>
                 <div style={{ display: "flex", alignItems: "center" }}>
-                  {/* Col 1: Logo */}
                   <div style={{ flex: "0 0 40px", marginRight: 12 }}>
                     <img src={`https://file.alphasquare.co.kr/media/images/stock_logo/kr/${p.symbol}.png`} alt={p.name} onError={(e: any) => { e.target.style.display="none"; e.target.nextSibling.style.display="flex"; }} style={{ width: 40, height: 40, borderRadius: 10 }} /><div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(255,255,255,0.06)", display: "none", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#94a3b8" }}>{p.name.slice(0,2)}</div>
                   </div>
-                  {/* Col 2: Name + holding */}
                   <div style={{ flex: "0 0 130px", minWidth: 0, marginRight: 2 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <span style={{ fontSize: p.name.length > 8 ? (p.name.length > 10 ? 11 : 12) : 14, fontWeight: 700, whiteSpace: "nowrap" }}>{p.name}</span>
@@ -725,22 +819,18 @@ export default function Home() {
                     </div>
                     <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{p.totalQty}주 · {holdingWeeks(p.firstBuyDate)}</div>
                   </div>
-                  {/* Col 3: Eval + PnL */}
                   <div style={{ flex: "0 0 130px", marginRight: 8 }}>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc", whiteSpace: "nowrap" }}>{p.currentPrice > 0 ? fmt(p.currentPrice * p.totalQty) : fmt(p.avgPrice * p.totalQty)}원</div>
                     {p.currentPrice > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: p.unrealizedPnl >= 0 ? "#ef4444" : "#3b82f6", marginTop: 1, whiteSpace: "nowrap" }}>{p.unrealizedPnl >= 0 ? "▲" : "▼"}{fmt(Math.abs(p.unrealizedPnl))}원 {(p.stockReturn >= 0 ? "+" : "")}{(p.stockReturn * 100).toFixed(2)}%</div>}
                   </div>
-                  {/* Col 4: Memo + Reason */}
                   <div style={{ flex: "1 1 70px", minWidth: 0, marginRight: 8 }}>
                     <div style={{ fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.memo ? <span style={{ color: "#e2e8f0" }}>&ldquo;{p.memo}&rdquo;</span> : <span style={{ color: "#475569" }}>메모없음</span>}</div>
                     <div style={{ fontSize: 11, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>{p.firstMemo || ""}</div>
                   </div>
-                  {/* Col 5: Price + Index */}
                   <div style={{ flex: "0 0 auto", textAlign: "right", marginRight: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", whiteSpace: "nowrap" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
                     <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
                   </div>
-                  {/* Col 6: Buy/Sell */}
                   <div style={{ flex: "0 0 auto", textAlign: "right" }}>
                     <div style={{ fontSize: 11, color: "#b97070", whiteSpace: "nowrap" }}>매수{buyCount}건</div>
                     <div style={{ fontSize: 11, color: "#7090b9", whiteSpace: "nowrap", marginTop: 2 }}>매도{sellCount}건</div>
@@ -750,16 +840,67 @@ export default function Home() {
             ); })}
           </div>
 
-          {/* Add Trade Button */}
           <div style={{ marginTop: 16, textAlign: "center" }}>
             <button onClick={() => navigateTo("add")} style={{ padding: "12px 24px", borderRadius: 10, border: "1px dashed rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.06)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer", width: "100%" }}>+ 거래 기록 추가하기</button>
           </div>
 
         </div>}
 
+        {/* ============ CASH (현금 관리) ============ */}
+        {view === "cash" && <div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 16 }}>현금 관리</div>
+
+          <div style={{ ...cs, marginBottom: 16, padding: "20px" }}>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>현재 현금</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: cash >= 0 ? "#f8fafc" : "#f87171", letterSpacing: "-0.5px" }}>{fmt(cash)}원</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>총 자산 {fmt(totalAssets)}원 · 평가금액 {fmt(totals.totalEval)}원</div>
+            {cash < 0 && <div style={{ marginTop: 8, fontSize: 11, color: "#fbbf24", display: "flex", alignItems: "center", gap: 5 }}><IconWarn /> 현금이 마이너스입니다. 입금 내역을 추가해주세요.</div>}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+              <div><div style={{ fontSize: 11, color: "#64748b" }}>총 입금</div><div style={{ fontSize: 14, fontWeight: 700, color: "#34d399" }}>{fmt(cashBreakdown.totalDeposit)}원</div></div>
+              <div><div style={{ fontSize: 11, color: "#64748b" }}>총 출금</div><div style={{ fontSize: 14, fontWeight: 700, color: "#fb923c" }}>{fmt(cashBreakdown.totalWithdraw)}원</div></div>
+              <div><div style={{ fontSize: 11, color: "#64748b" }}>매수 사용</div><div style={{ fontSize: 14, fontWeight: 700, color: "#ef4444" }}>-{fmt(cashBreakdown.buyUsed)}원</div></div>
+              <div><div style={{ fontSize: 11, color: "#64748b" }}>매도 회수</div><div style={{ fontSize: 14, fontWeight: 700, color: "#3b82f6" }}>+{fmt(cashBreakdown.sellRecovered)}원</div></div>
+            </div>
+          </div>
+
+          <div style={{ ...cs, marginBottom: 16, padding: "16px 18px" }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 12 }}>입금 / 출금 기록</div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              {[["DEPOSIT","입금"],["WITHDRAW","출금"]].map(([k,l]) => (
+                <button key={k} onClick={() => setCashForm(f => ({ ...f, type: k }))} style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid", borderColor: cashForm.type === k ? (k === "DEPOSIT" ? "#34d399" : "#fb923c") : "rgba(255,255,255,0.06)", background: cashForm.type === k ? (k === "DEPOSIT" ? "rgba(52,211,153,0.1)" : "rgba(251,146,60,0.1)") : "transparent", color: cashForm.type === k ? (k === "DEPOSIT" ? "#34d399" : "#fb923c") : "#64748b", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+              <div><label style={ls}>날짜</label><input type="date" value={cashForm.txn_date} onChange={(e: any) => setCashForm(f => ({ ...f, txn_date: e.target.value }))} style={is} /></div>
+              <div><label style={ls}>금액</label><input type="number" placeholder="0" value={cashForm.amount} onChange={(e: any) => setCashForm(f => ({ ...f, amount: e.target.value }))} style={is} /></div>
+            </div>
+            <input placeholder="메모 (선택)" value={cashForm.note} onChange={(e: any) => setCashForm(f => ({ ...f, note: e.target.value }))} style={{ ...is, marginBottom: 12 }} />
+            <button onClick={addCashTxn} disabled={!cashForm.amount} style={{ width: "100%", padding: "12px 0", borderRadius: 10, border: "none", fontSize: 14, fontWeight: 700, cursor: cashForm.amount ? "pointer" : "not-allowed", background: cashForm.amount ? (cashForm.type === "DEPOSIT" ? "#059669" : "#ea580c") : "rgba(255,255,255,0.05)", color: cashForm.amount ? "#fff" : "#475569" }}>{cashForm.type === "DEPOSIT" ? "입금 기록" : "출금 기록"}</button>
+          </div>
+
+          {cashTxns.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {[...cashTxns].sort((a, b) => { const d = b.txn_date.localeCompare(a.txn_date); return d !== 0 ? d : b.id.localeCompare(a.id); }).map(c => (
+                <div key={c.id} style={{ ...cs, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: c.type === "DEPOSIT" ? "rgba(52,211,153,0.12)" : "rgba(251,146,60,0.12)", color: c.type === "DEPOSIT" ? "#34d399" : "#fb923c", flex: "0 0 auto" }}>{c.type === "DEPOSIT" ? "입금" : "출금"}</span>
+                    <span style={{ fontSize: 12, color: "#64748b", flex: "0 0 auto" }}>{c.txn_date}</span>
+                    {c.note && <span style={{ fontSize: 12, color: "#8b9dc3", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.note}</span>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "0 0 auto" }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: c.type === "DEPOSIT" ? "#34d399" : "#fb923c" }}>{c.type === "DEPOSIT" ? "+" : "-"}{fmt(c.amount)}원</span>
+                    <button onClick={() => { if (confirm("이 내역을 삭제하시겠습니까?")) delCashTxn(c.id); }} style={{ background: "none", border: "none", color: "#475569", fontSize: 11, cursor: "pointer" }}>삭제</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "30px 0", color: "#475569", fontSize: 13 }}>입출금 내역이 없습니다</div>
+          )}
+        </div>}
+
         {/* ============ DETAIL ============ */}
         {view === "detail" && selInstData && <div>
-          {/* Header Card */}
           <div style={{ ...cs, marginBottom: 16, padding: "20px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -805,9 +946,6 @@ export default function Home() {
                 {[-7, -10, -12, -15].map(pct => {
                   const price = Math.round(chartHigh * (1 + pct / 100));
                   const isReached = selPos.currentPrice <= price;
-                  const isCurrentLevel = isReached && (pct === -7 || selPos.currentPrice <= Math.round(chartHigh * (1 + pct / 100)));
-                  const nextPct = [-7, -10, -12, -15][[-7, -10, -12, -15].indexOf(pct) - 1];
-                  const nextPrice = nextPct ? Math.round(chartHigh * (1 + nextPct / 100)) : chartHigh;
                   const isExactLevel = isReached && selPos.currentPrice > (pct === -15 ? 0 : Math.round(chartHigh * (1 + ([-7,-10,-12,-15][[-7,-10,-12,-15].indexOf(pct) + 1] || -100) / 100)));
                   return (
                     <div key={pct} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 11, background: isReached ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${isExactLevel ? "#ef4444" : isReached ? "rgba(239,68,68,0.3)" : "rgba(255,255,255,0.05)"}`, position: "relative" }}>
@@ -833,8 +971,7 @@ export default function Home() {
                 {[-7, -10, -12, -15].map(pct => {
                   const price = Math.round(selPos.avgPrice * (1 + pct / 100));
                   const isReached = selPos.currentPrice <= price;
-                  const levels = [-7, -10, -12, -15];
-                  const idx = levels.indexOf(pct);
+                  const levels = [-7, -10, -12, -15]; const idx = levels.indexOf(pct);
                   const nextLevelPrice = idx < levels.length - 1 ? Math.round(selPos.avgPrice * (1 + levels[idx + 1] / 100)) : 0;
                   const isExactLevel = isReached && selPos.currentPrice > nextLevelPrice;
                   return (
@@ -864,7 +1001,10 @@ export default function Home() {
 
           {/* Quick Trade */}
           <div style={{ ...cs, marginBottom: 16, padding: "14px 18px" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 10 }}>📝 추가 매수 기록</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>📝 추가 매수 기록</div>
+              <div style={{ fontSize: 11, color: "#64748b" }}>현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b></div>
+            </div>
             <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
               <div style={{ flex: "1 1 80px" }}>
                 <label style={{ fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" }}>날짜</label>
@@ -880,7 +1020,11 @@ export default function Home() {
               </div>
               <button onClick={async () => { if (!form.quantity || !form.price || !selInst) return; const { data } = await supabase.from("trades").insert({ instrument_id: selInst, trade_date: form.trade_date, side: "BUY", quantity: parseInt(form.quantity), price: parseInt(form.price), note: "추가 매수", user_id: user.id }).select().single(); if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "" })); loadData(); } }} disabled={!form.quantity || !form.price} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: form.quantity && form.price ? "#ef4444" : "rgba(255,255,255,0.05)", color: form.quantity && form.price ? "#fff" : "#475569", fontSize: 12, fontWeight: 700, cursor: form.quantity && form.price ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}>매수</button>
             </div>
-            {form.quantity && form.price && <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>총 {fmt(parseInt(form.quantity) * parseInt(form.price))}원</div>}
+            {form.quantity && form.price && (() => {
+              const buyAmt = parseInt(form.quantity) * parseInt(form.price);
+              const after = cash - buyAmt;
+              return <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>총 {fmt(buyAmt)}원 · 매수 후 현금 <b style={{ color: after >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(after)}원</b></div>;
+            })()}
           </div>
 
           {/* Instrument Memo */}
@@ -908,17 +1052,14 @@ export default function Home() {
 
           {/* Trade Timeline */}
           {(() => {
-            // Current position trades only (after last full sell)
             const pos = selPos;
-            const allTrades = [...instTrades]; // already sorted newest first
+            const allTrades = [...instTrades];
             const currentTrades = pos?.firstBuyDate ? allTrades.filter(t => t.trade_date >= pos.firstBuyDate) : allTrades;
-            const sortedAsc = [...currentTrades].reverse(); // oldest first
-            
+            const sortedAsc = [...currentTrades].reverse();
             const firstBuy = sortedAsc.find(t => t.side === "BUY" && t.note?.trim() && t.note.trim() !== "추가 매수");
             const addBuys = currentTrades.filter(t => t.note?.trim() === "추가 매수");
             const recentActions = currentTrades.filter(t => t.id !== firstBuy?.id && t.note?.trim() !== "추가 매수");
 
-            // Render a single trade card (reusable)
             const renderTrade = (t: Trade) => {
               const hm = !!t.note?.trim();
               const isEditingThis = editingNote === t.id;
@@ -955,7 +1096,6 @@ export default function Home() {
             };
 
             return <>
-              {/* 1. First Buy Reason - Pinned */}
               {firstBuy && (
                 editingNote === firstBuy.id ? (
                   <div style={{ ...cs, marginBottom: 12, padding: "14px 18px", borderLeft: "3px solid #ef4444" }}>
@@ -979,7 +1119,6 @@ export default function Home() {
                 )
               )}
 
-              {/* 2. Recent Actions (newest first, excluding firstBuy and 추가매수) */}
               {recentActions.length > 0 && (
                 <>
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}><IconMemo /> 최근 매매</div>
@@ -989,7 +1128,6 @@ export default function Home() {
                 </>
               )}
 
-              {/* 3. 추가 매수 Summary (grouped) */}
               {addBuys.length > 0 && (
                 <div style={{ ...cs, marginBottom: 12, padding: "12px 18px" }}>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 8 }}>추가 매수 {addBuys.length}건</div>
@@ -1024,14 +1162,12 @@ export default function Home() {
         {view === "trades" && <div>
           {!trades.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569", fontSize: 14 }}>거래내역이 없습니다</div>}
           {trades.length > 0 && <>
-            {/* View Mode Toggle */}
             <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3 }}>
               {([["date","날짜별"],["stock","종목별"]] as const).map(([k,l]) => (
                 <button key={k} onClick={() => setTradesViewMode(k)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: tradesViewMode === k ? 700 : 500, background: tradesViewMode === k ? "rgba(255,255,255,0.08)" : "transparent", color: tradesViewMode === k ? "#f1f5f9" : "#64748b", cursor: "pointer" }}>{l}</button>
               ))}
             </div>
 
-            {/* DATE VIEW */}
             {tradesViewMode === "date" && (() => {
               const sorted = [...trades].sort((a, b) => { const d = b.trade_date.localeCompare(a.trade_date); return d !== 0 ? d : b.id.localeCompare(a.id); });
               const months: Record<string, Trade[]> = {};
@@ -1113,7 +1249,6 @@ export default function Home() {
               });
             })()}
 
-            {/* STOCK VIEW */}
             {tradesViewMode === "stock" && (() => {
               const byInst: Record<string, { inst: Instrument; trades: Trade[] }> = {};
               trades.forEach(t => {
@@ -1179,7 +1314,6 @@ export default function Home() {
           </>}
         </div>}
 
-
         {/* ============ GLOBAL INDICATORS ============ */}
         {view === "global" && <div>
           <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 16 }}>국제 지표</div>
@@ -1197,8 +1331,7 @@ export default function Home() {
                 { key: "vix", icon: "😱", desc: "시장 변동성" },
                 { key: "sox", icon: "🔧", desc: "반도체 업종" },
               ].map(({ key, icon, desc }) => {
-                const d = globalData[key];
-                if (!d) return null;
+                const d = globalData[key]; if (!d) return null;
                 const isUp = d.change >= 0;
                 const isVix = key === "vix";
                 const vixLevel = isVix ? (d.price >= 30 ? "극도의 공포" : d.price >= 20 ? "불안" : "안정") : "";
@@ -1219,7 +1352,6 @@ export default function Home() {
               })}
             </div>
 
-            {/* Global Chart */}
             {globalSel && globalData[globalSel] && (
               <div style={{ ...cs, marginTop: 12, padding: "12px 14px" }}>
                 <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>{globalData[globalSel].name} 차트 (6개월){globalSel === "gold" ? " · USD 기준" : ""}</div>
@@ -1232,7 +1364,10 @@ export default function Home() {
         {/* ============ ADD TRADE ============ */}
         {view === "add" && <div style={{ maxWidth: 480, margin: "0 auto" }}>
           <div style={{ ...cs, padding: 24 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 22 }}>거래 기록</div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 22 }}>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>거래 기록</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>보유 현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b></div>
+            </div>
             <div style={{ marginBottom: 16 }}>
               <label style={ls}>종목</label>
               {instruments.length > 0 ? <select value={form.instrument_id} onChange={(e: any) => { const id = e.target.value; const active = hasActivePosition(trades, id); setForm(f => ({ ...f, instrument_id: id, note: f.side === "BUY" && active ? "추가 매수" : "" })); }} style={is}>{instruments.map(i => <option key={i.id} value={i.id}>{i.name} ({i.symbol})</option>)}</select>
@@ -1264,7 +1399,20 @@ export default function Home() {
               <div><label style={ls}>수량</label><input type="number" placeholder="0" value={form.quantity} onChange={(e: any) => setForm(f => ({ ...f, quantity: e.target.value }))} style={is} /></div>
               <div><label style={ls}>단가</label><input type="number" placeholder="0" value={form.price} onChange={(e: any) => setForm(f => ({ ...f, price: e.target.value }))} style={is} /></div>
             </div>
-            {form.quantity && form.price && <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.03)", display: "flex", justifyContent: "space-between" }}><span style={{ fontSize: 12, color: "#64748b" }}>총 금액</span><span style={{ fontSize: 15, fontWeight: 800, color: form.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{fmt(parseInt(form.quantity) * parseInt(form.price))}원</span></div>}
+            {form.quantity && form.price && (
+              <div style={{ marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.03)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>총 금액</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: form.side === "BUY" ? "#ef4444" : "#3b82f6" }}>{fmt(parseInt(form.quantity) * parseInt(form.price))}원</span>
+                </div>
+                {projectedCash !== null && (
+                  <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 6, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                    <span style={{ fontSize: 12, color: "#64748b" }}>거래 후 현금</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: projectedCash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(projectedCash)}원</span>
+                  </div>
+                )}
+              </div>
+            )}
             <div style={{ marginBottom: 20, padding: 16, borderRadius: 10, background: "rgba(124,58,237,0.06)", border: "1px solid rgba(124,58,237,0.12)" }}>
               <label style={{ ...ls, display: "flex", alignItems: "center", gap: 6, color: "#c4b5fd", marginBottom: 10 }}><IconMemo />{form.side === "BUY" ? "왜 매수하나요?" : "왜 매도하나요?"}</label>
               <textarea value={form.note} onChange={(e: any) => setForm(f => ({ ...f, note: e.target.value }))} placeholder={form.side === "BUY" ? "예: 방산 수주 증가 + 중동 긴장 고조" : "예: 목표가 도달. 비중 축소"} rows={3} style={{ ...is, resize: "vertical", lineHeight: 1.6, minHeight: 80, fontFamily: "inherit", borderColor: "rgba(124,58,237,0.15)", background: "rgba(255,255,255,0.02)" }} />
@@ -1277,7 +1425,6 @@ export default function Home() {
         </div>}
       </main>
 
-      {/* Footer */}
       <footer style={{ textAlign: "center", padding: "20px 12px 32px", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
         <div style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>주식노트</div>
         <div style={{ fontSize: 11, color: "#334155", marginTop: 4 }}>손실을 줄이는 투자 습관</div>
