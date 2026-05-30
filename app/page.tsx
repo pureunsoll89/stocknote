@@ -90,6 +90,7 @@ export default function Home() {
   const [editTrade, setEditTrade] = useState<any>(null);
   const [form, setForm] = useState({ instrument_id: "", trade_date: new Date().toISOString().split("T")[0], side: "BUY", quantity: "", price: "", note: "" });
   const [cashForm, setCashForm] = useState({ txn_date: new Date().toISOString().split("T")[0], type: "DEPOSIT", amount: "", note: "" });
+  const [hideAmounts, setHideAmounts] = useState(false);
   const [showNewInst, setShowNewInst] = useState(false);
   const [newInst, setNewInst] = useState({ symbol: "", name: "", market: "KOSPI" });
   const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
@@ -821,13 +822,18 @@ export default function Home() {
 
         {/* ============ ALLOCATION (자산 비중) ============ */}
         {view === "allocation" && <div>
-          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 16 }}>자산 비중</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>자산 비중</div>
+            <button onClick={() => setHideAmounts(h => !h)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: hideAmounts ? "rgba(45,212,191,0.1)" : "rgba(255,255,255,0.03)", color: hideAmounts ? "#2dd4bf" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              {hideAmounts ? "👁 금액 표시" : "🙈 금액 숨기기"}
+            </button>
+          </div>
 
           {(allocation.items.length > 0 || allocation.cashWeight > 0) ? (
             <div style={{ ...cs, padding: "20px" }}>
               {/* Subtext */}
               <div style={{ textAlign: "center", fontSize: 12, color: "#64748b", marginBottom: 8 }}>
-                평가 {fmt(totals.totalEval)}원 · 현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b>
+                {hideAmounts ? <span>평가 ●●● · 현금 ●●●</span> : <>평가 {fmt(totals.totalEval)}원 · 현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b></>}
               </div>
 
               {/* Donut Chart */}
@@ -851,7 +857,7 @@ export default function Home() {
                     const centerText = (
                       <g key="_center">
                         <text x={cx} y={cy - 8} fill="#64748b" fontSize="11" textAnchor="middle">총 자산</text>
-                        <text x={cx} y={cy + 14} fill="#f8fafc" fontSize="16" fontWeight="800" textAnchor="middle">{centerLabel}</text>
+                        <text x={cx} y={cy + 14} fill="#f8fafc" fontSize="16" fontWeight="800" textAnchor="middle">{hideAmounts ? "●●●" : centerLabel}</text>
                       </g>
                     );
 
@@ -902,7 +908,7 @@ export default function Home() {
                   <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ width: 12, height: 12, borderRadius: 4, background: it.color, flex: "0 0 12px" }} />
                     <span style={{ fontSize: 13, color: "#e2e8f0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.round(it.amount))}원</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{hideAmounts ? "●●●" : `${fmt(Math.round(it.amount))}원`}</span>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9", flex: "0 0 60px", textAlign: "right" }}>{(it.weight * 100).toFixed(1)}%</span>
                   </div>
                 ))}
@@ -910,7 +916,7 @@ export default function Home() {
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <div style={{ width: 12, height: 12, borderRadius: 4, background: "#2dd4bf", flex: "0 0 12px" }} />
                     <span style={{ fontSize: 13, color: "#e2e8f0", flex: 1 }}>현금</span>
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.max(0, cash))}원</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{hideAmounts ? "●●●" : `${fmt(Math.max(0, cash))}원`}</span>
                     <span style={{ fontSize: 14, fontWeight: 700, color: "#2dd4bf", flex: "0 0 60px", textAlign: "right" }}>{(allocation.cashWeight * 100).toFixed(1)}%</span>
                   </div>
                 )}
