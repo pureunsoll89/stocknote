@@ -225,6 +225,7 @@ export default function Home() {
       else if (hash === "#trades") { setView("trades"); setSelInst(null); }
       else if (hash === "#add") { setView("add"); setSelInst(null); }
       else if (hash === "#cash") { setView("cash"); setSelInst(null); }
+      else if (hash === "#allocation") { setView("allocation"); setSelInst(null); }
       else if (hash === "#global") { setView("global"); setSelInst(null); }
       else { setView("dashboard"); setSelInst(null); }
     };
@@ -244,6 +245,8 @@ export default function Home() {
       setForm(f => { const active = hasActivePosition(trades, f.instrument_id); return { ...f, note: f.side === "BUY" && active && !f.note.trim() ? "추가 매수" : f.note }; });
     } else if (v === "cash") {
       window.history.pushState(null, "", "#cash");
+    } else if (v === "allocation") {
+      window.history.pushState(null, "", "#allocation");
     } else if (v === "global") {
       window.history.pushState(null, "", "#global");
     } else {
@@ -627,7 +630,7 @@ export default function Home() {
         )}
         {view !== "detail" && (
           <div className="navscroll" style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 2, overflowX: "auto", minWidth: 0 }}>
-            {[{ k: "dashboard", l: "보유현황" }, { k: "cash", l: "현금" }, { k: "trades", l: "거래내역" }, { k: "global", l: "국제지표" }, { k: "add", l: "+ 기록" }].map(t => (
+            {[{ k: "dashboard", l: "보유현황" }, { k: "allocation", l: "비중" }, { k: "cash", l: "현금" }, { k: "trades", l: "거래내역" }, { k: "global", l: "국제지표" }, { k: "add", l: "+ 기록" }].map(t => (
               <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 9px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap", flex: "0 0 auto" }}>{t.l}</button>
             ))}
           </div>
@@ -695,36 +698,6 @@ export default function Home() {
                 <span>투자금 {fmt(totals.totalInvested)}원</span>
                 <span>기록률 <b style={{ color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</b></span>
                 <span>{positions.length}종목 · {totals.totalTrades}건</span>
-              </div>
-            </div>
-          )}
-
-          {/* Asset Allocation */}
-          {(allocation.items.length > 0 || allocation.cashWeight > 0) && (
-            <div style={{ ...cs, marginBottom: 16, padding: "16px 18px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>📊 자산 비중</span>
-                <span style={{ fontSize: 11, color: "#64748b" }}>총 {fmt(Math.round(allocation.denom))}원</span>
-              </div>
-              <div style={{ display: "flex", height: 12, borderRadius: 6, overflow: "hidden", marginBottom: 14, background: "rgba(255,255,255,0.04)" }}>
-                {allocation.items.map((it: any) => <div key={it.id} title={it.name} style={{ width: `${it.weight * 100}%`, background: it.color }} />)}
-                {allocation.cashWeight > 0 && <div title="현금" style={{ width: `${allocation.cashWeight * 100}%`, background: "#2dd4bf" }} />}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {allocation.items.map((it: any) => (
-                  <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 3, background: it.color, flex: "0 0 10px" }} />
-                    <span style={{ fontSize: 12, color: "#e2e8f0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
-                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.round(it.amount))}원</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9", flex: "0 0 52px", textAlign: "right" }}>{(it.weight * 100).toFixed(1)}%</span>
-                  </div>
-                ))}
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 3, background: "#2dd4bf", flex: "0 0 10px" }} />
-                  <span style={{ fontSize: 12, color: "#e2e8f0", flex: 1 }}>현금</span>
-                  <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.max(0, cash))}원</span>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "#2dd4bf", flex: "0 0 52px", textAlign: "right" }}>{(allocation.cashWeight * 100).toFixed(1)}%</span>
-                </div>
               </div>
             </div>
           )}
@@ -844,6 +817,116 @@ export default function Home() {
             <button onClick={() => navigateTo("add")} style={{ padding: "12px 24px", borderRadius: 10, border: "1px dashed rgba(124,58,237,0.3)", background: "rgba(124,58,237,0.06)", color: "#a78bfa", fontSize: 13, fontWeight: 600, cursor: "pointer", width: "100%" }}>+ 거래 기록 추가하기</button>
           </div>
 
+        </div>}
+
+        {/* ============ ALLOCATION (자산 비중) ============ */}
+        {view === "allocation" && <div>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 16 }}>자산 비중</div>
+
+          {(allocation.items.length > 0 || allocation.cashWeight > 0) ? (
+            <div style={{ ...cs, padding: "20px" }}>
+              {/* Subtext */}
+              <div style={{ textAlign: "center", fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+                평가 {fmt(totals.totalEval)}원 · 현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b>
+              </div>
+
+              {/* Donut Chart */}
+              <div style={{ display: "flex", justifyContent: "center", margin: "8px 0 20px" }}>
+                <svg viewBox="0 0 300 300" style={{ width: "100%", maxWidth: 300, height: "auto" }}>
+                  {(() => {
+                    const cx = 150, cy = 150, outerR = 110, innerR = 65;
+                    const segments: any[] = [
+                      ...allocation.items.map((it: any) => ({ id: it.id, name: it.name, weight: it.weight, color: it.color })),
+                    ];
+                    if (allocation.cashWeight > 0) segments.push({ id: "_cash", name: "현금", weight: allocation.cashWeight, color: "#2dd4bf" });
+
+                    // Center label (compact format for large amounts)
+                    const ta = totalAssets;
+                    const centerLabel = ta >= 100000000
+                      ? `${(ta / 100000000).toFixed(ta >= 1000000000 ? 0 : 1).replace(/\.0$/, "")}억원`
+                      : ta >= 10000
+                      ? `${fmt(Math.round(ta / 10000))}만원`
+                      : `${fmt(ta)}원`;
+
+                    const centerText = (
+                      <g key="_center">
+                        <text x={cx} y={cy - 8} fill="#64748b" fontSize="11" textAnchor="middle">총 자산</text>
+                        <text x={cx} y={cy + 14} fill="#f8fafc" fontSize="16" fontWeight="800" textAnchor="middle">{centerLabel}</text>
+                      </g>
+                    );
+
+                    // Single segment - draw as stroked circle
+                    if (segments.length === 1) {
+                      return <>
+                        <circle cx={cx} cy={cy} r={(outerR + innerR) / 2} fill="none" stroke={segments[0].color} strokeWidth={outerR - innerR} />
+                        {centerText}
+                      </>;
+                    }
+
+                    // Multi-segment - draw arc paths
+                    let cum = -Math.PI / 2;
+                    const paths = segments.map((seg) => {
+                      const sa = cum;
+                      const ea = cum + seg.weight * 2 * Math.PI;
+                      cum = ea;
+                      const large = (ea - sa) > Math.PI ? 1 : 0;
+                      const x1 = cx + outerR * Math.cos(sa);
+                      const y1 = cy + outerR * Math.sin(sa);
+                      const x2 = cx + outerR * Math.cos(ea);
+                      const y2 = cy + outerR * Math.sin(ea);
+                      const x3 = cx + innerR * Math.cos(ea);
+                      const y3 = cy + innerR * Math.sin(ea);
+                      const x4 = cx + innerR * Math.cos(sa);
+                      const y4 = cy + innerR * Math.sin(sa);
+                      const mid = (sa + ea) / 2;
+                      const lr = (innerR + outerR) / 2;
+                      const lx = cx + lr * Math.cos(mid);
+                      const ly = cy + lr * Math.sin(mid);
+                      return (
+                        <g key={seg.id}>
+                          <path d={`M ${x1} ${y1} A ${outerR} ${outerR} 0 ${large} 1 ${x2} ${y2} L ${x3} ${y3} A ${innerR} ${innerR} 0 ${large} 0 ${x4} ${y4} Z`} fill={seg.color} stroke="#0a0e18" strokeWidth="1.5" />
+                          {seg.weight >= 0.06 && (
+                            <text x={lx} y={ly} fill="#fff" fontSize="13" fontWeight="700" textAnchor="middle" dominantBaseline="central" pointerEvents="none">{(seg.weight * 100).toFixed(0)}%</text>
+                          )}
+                        </g>
+                      );
+                    });
+                    return <>{paths}{centerText}</>;
+                  })()}
+                </svg>
+              </div>
+
+              {/* Legend */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+                {allocation.items.map((it: any) => (
+                  <div key={it.id} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: 4, background: it.color, flex: "0 0 12px" }} />
+                    <span style={{ fontSize: 13, color: "#e2e8f0", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.name}</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.round(it.amount))}원</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#f1f5f9", flex: "0 0 60px", textAlign: "right" }}>{(it.weight * 100).toFixed(1)}%</span>
+                  </div>
+                ))}
+                {allocation.cashWeight > 0 && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 12, height: 12, borderRadius: 4, background: "#2dd4bf", flex: "0 0 12px" }} />
+                    <span style={{ fontSize: 13, color: "#e2e8f0", flex: 1 }}>현금</span>
+                    <span style={{ fontSize: 12, color: "#94a3b8" }}>{fmt(Math.max(0, cash))}원</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: "#2dd4bf", flex: "0 0 60px", textAlign: "right" }}>{(allocation.cashWeight * 100).toFixed(1)}%</span>
+                  </div>
+                )}
+              </div>
+
+              {cash < 0 && (
+                <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 6, background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.15)", fontSize: 11, color: "#fbbf24", display: "flex", alignItems: "center", gap: 5 }}>
+                  <IconWarn /> 현금이 마이너스라 비중 계산에서는 0으로 처리됩니다.
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: "60px 0", color: "#64748b", fontSize: 14 }}>
+              자산이 없습니다.<br /><span style={{ fontSize: 12, color: "#475569" }}>거래를 기록하거나 입금을 추가해주세요.</span>
+            </div>
+          )}
         </div>}
 
         {/* ============ CASH (현금 관리) ============ */}
