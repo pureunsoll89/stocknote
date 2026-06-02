@@ -540,14 +540,17 @@ export default function Home() {
   }, [cashTxns, trades, instruments]);
 
   const totals = useMemo(() => {
-    const totalInvested = positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
+    // 현재 보유 종목의 매수원금 (avg cost basis)
+    const currentCost = positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
     const totalEval = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
     const totalUnrealized = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
     const totalRealized = allRealizedPnl + priorRealizedPnl;
+    // 순 투자금: 실현이익은 차감, 실현손실은 가산 → 실제로 내 돈에서 나가서 아직 회수 안 된 금액
+    const totalInvested = currentCost - totalRealized;
     const totalTrades = trades.length;
     const noMemo = trades.filter(t => !t.note?.trim()).length;
     const totalReturnRate = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
-    return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
+    return { totalInvested, currentCost, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
   }, [positions, trades, allRealizedPnl, priorRealizedPnl]);
 
   const totalAssets = totals.totalEval + cash;
