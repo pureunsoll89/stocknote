@@ -119,6 +119,8 @@ export default function Home() {
   const [fontScale, setFontScale] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+  const [priorRealizedPnl, setPriorRealizedPnl] = useState<number>(0);
+  const [priorPnlInput, setPriorPnlInput] = useState<string>("");
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
@@ -346,7 +348,14 @@ export default function Home() {
   }
   async function signOut() {
     await supabase.auth.signOut();
-    setUser(null); setInstruments([]); setTrades([]); setCashTxns([]); setCurrentPrices({});
+    setUser(null); setInstruments([]); setTrades([]); setCashTxns([]); setCurrentPrices({}); setPriorRealizedPnl(0); setPriorPnlInput("");
+  }
+
+  async function savePriorRealizedPnl() {
+    if (!user) return;
+    const val = parseInt(priorPnlInput) || 0;
+    const { error } = await supabase.from("user_settings").upsert({ user_id: user.id, prior_realized_pnl: val, updated_at: new Date().toISOString() });
+    if (!error) setPriorRealizedPnl(val);
   }
 
   async function saveInstMemo(instId: string) {
@@ -368,6 +377,10 @@ export default function Home() {
     const { data: i } = await supabase.from("instruments").select("*").eq("user_id", currentUser.id);
     const { data: t } = await supabase.from("trades").select("*").eq("user_id", currentUser.id);
     const { data: c } = await supabase.from("cash_transactions").select("*").eq("user_id", currentUser.id);
+    const { data: settings } = await supabase.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle();
+    const priorPnl = settings?.prior_realized_pnl || 0;
+    setPriorRealizedPnl(priorPnl);
+    setPriorPnlInput(priorPnl ? String(priorPnl) : "");
     let cashList: CashTxn[] = c || [];
 
     // ─── 자동 보정: 현금 기록이 0건이고 거래가 있으면, 매수 누적액에서 매도 수령액을 뺀 만큼 '초기 보정' 입금 1건 생성 ───
@@ -530,12 +543,12 @@ export default function Home() {
     const totalInvested = positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
     const totalEval = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
     const totalUnrealized = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
-    const totalRealized = allRealizedPnl;
+    const totalRealized = allRealizedPnl + priorRealizedPnl;
     const totalTrades = trades.length;
     const noMemo = trades.filter(t => !t.note?.trim()).length;
     const totalReturnRate = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
     return { totalInvested, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
-  }, [positions, trades, allRealizedPnl]);
+  }, [positions, trades, allRealizedPnl, priorRealizedPnl]);
 
   const totalAssets = totals.totalEval + cash;
 
@@ -645,11 +658,25 @@ export default function Home() {
       {/* Settings Panel */}
       {showSettings && (
         <div style={{ padding: "12px 16px", background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-          <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>글자 크기</span>
-            {[{ v: 0.85, l: "작게" }, { v: 1, l: "보통" }, { v: 1.15, l: "크게" }, { v: 1.3, l: "아주 크게" }].map(({ v, l }) => (
-              <button key={v} onClick={() => { setFontScale(v); localStorage.setItem("stocknote_fontScale", String(v)); }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 11, fontWeight: fontScale === v ? 700 : 500, background: fontScale === v ? "rgba(124,58,237,0.15)" : "rgba(255,255,255,0.04)", color: fontScale === v ? "#a78bfa" : "#64748b", cursor: "pointer" }}>{l}</button>
-            ))}
+          <div style={{ maxWidth: 680, margin: "0 auto", display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>글자 크기</span>
+              {[{ v: 0.85, l: "작게" }, { v: 1, l: "보통" }, { v: 1.15, l: "크게" }, { v: 1.3, l: "아주 크게" }].map(({ v, l }) => (
+                <button key={v} onClick={() => { setFontScale(v); localStorage.setItem("stocknote_fontScale", String(v)); }} style={{ padding: "4px 10px", borderRadius: 6, border: "none", fontSize: 11, fontWeight: fontScale === v ? 700 : 500, background: fontScale === v ? "rgba(124,58,237,0.15)" : "rgba(255,255,255,0.04)", color: fontScale === v ? "#a78bfa" : "#64748b", cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>이 앱 사용 전 누적 실현손익 <span style={{ color: "#64748b", fontWeight: 400 }}>· 손실은 음수 (예: -500000)</span></span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <input type="number" value={priorPnlInput} onChange={(e: any) => setPriorPnlInput(e.target.value)} placeholder="0" style={{ flex: 1, maxWidth: 220, padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)", color: "#e2e8f0", fontSize: 13, outline: "none" }} />
+                <span style={{ fontSize: 12, color: "#64748b" }}>원</span>
+                <button onClick={savePriorRealizedPnl} disabled={(parseInt(priorPnlInput) || 0) === priorRealizedPnl} style={{ padding: "7px 14px", borderRadius: 7, border: "none", background: (parseInt(priorPnlInput) || 0) !== priorRealizedPnl ? "#7c3aed" : "rgba(255,255,255,0.05)", color: (parseInt(priorPnlInput) || 0) !== priorRealizedPnl ? "#fff" : "#475569", fontSize: 12, fontWeight: 700, cursor: (parseInt(priorPnlInput) || 0) !== priorRealizedPnl ? "pointer" : "not-allowed" }}>저장</button>
+              </div>
+              <div style={{ fontSize: 11, color: "#64748b" }}>
+                현재 적용: <b style={{ color: priorRealizedPnl >= 0 ? "#ef4444" : "#3b82f6" }}>{priorRealizedPnl >= 0 ? "+" : ""}{fmt(priorRealizedPnl)}원</b>
+                {" · 대시보드 실현손익에 합산됩니다"}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -693,6 +720,12 @@ export default function Home() {
                   <div style={{ fontSize: 18, fontWeight: 800, color: totals.totalRealized >= 0 ? "#ef4444" : "#3b82f6" }}>
                     {totals.totalRealized >= 0 ? "+" : ""}{fmt(totals.totalRealized)}원
                   </div>
+                  {priorRealizedPnl !== 0 && (
+                    <div style={{ fontSize: 10, color: "#64748b", marginTop: 3, lineHeight: 1.4 }}>
+                      <div>기존 {priorRealizedPnl >= 0 ? "+" : ""}{fmt(priorRealizedPnl)}</div>
+                      <div>신규 {allRealizedPnl >= 0 ? "+" : ""}{fmt(allRealizedPnl)}</div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12, color: "#64748b" }}>
