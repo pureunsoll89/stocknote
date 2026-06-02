@@ -545,13 +545,13 @@ export default function Home() {
     const totalEval = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
     const totalUnrealized = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
     const totalRealized = allRealizedPnl + priorRealizedPnl;
-    // 투자금 = 총입금 - 총출금 (정의)
-    //        = 현재 현금 + 보유원금 - 누적 실현손익 (회계 등식으로 풀어쓴 것)
-    // 입금↑→투자금↑, 출금↓→투자금↓, 매수/매도는 무영향
-    const totalInvested = cash + currentCost - totalRealized;
+    // 투자원금 = 총자산 − 누적 실현손익 − 평가손익
+    //          = 총 입금 − 총 출금 (회계 등식상 동등)
+    // 즉, 총자산에서 모든 손익을 제거하면 진짜 원금이 남는다.
+    const totalInvested = (totalEval + cash) - totalRealized - totalUnrealized;
     const totalTrades = trades.length;
     const noMemo = trades.filter(t => !t.note?.trim()).length;
-    // 평가 수익률: 현재 보유 종목의 평가손익을 매수원금 대비 %로 (표준 metric)
+    // 평가 수익률: 보유 종목의 평가손익을 매수원금 대비 %로 (표준 metric)
     const totalReturnRate = currentCost > 0 ? (totalUnrealized / currentCost) * 100 : 0;
     return { totalInvested, currentCost, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
   }, [positions, trades, allRealizedPnl, priorRealizedPnl, cash]);
@@ -735,7 +735,7 @@ export default function Home() {
                 </div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12, color: "#64748b" }}>
-                <span>투자금 {fmt(totals.totalInvested)}원</span>
+                <span>투자원금 {fmt(totals.totalInvested)}원</span>
                 <span>기록률 <b style={{ color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</b></span>
                 <span>{positions.length}종목 · {totals.totalTrades}건</span>
               </div>
