@@ -118,7 +118,7 @@ export default function Home() {
   const [isMobile, setIsMobile] = useState(false);
   const [fontScale, setFontScale] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
@@ -1252,30 +1252,32 @@ export default function Home() {
           {!trades.length && <div style={{ textAlign: "center", padding: "60px 0", color: "#475569", fontSize: 14 }}>거래내역이 없습니다</div>}
           {trades.length > 0 && <>
             <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3 }}>
-              {([["date","날짜별"],["stock","종목별"]] as const).map(([k,l]) => (
+              {([["date","일별"],["stock","종목별"]] as const).map(([k,l]) => (
                 <button key={k} onClick={() => setTradesViewMode(k)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: tradesViewMode === k ? 700 : 500, background: tradesViewMode === k ? "rgba(255,255,255,0.08)" : "transparent", color: tradesViewMode === k ? "#f1f5f9" : "#64748b", cursor: "pointer" }}>{l}</button>
               ))}
             </div>
 
             {tradesViewMode === "date" && (() => {
               const sorted = [...trades].sort((a, b) => { const d = b.trade_date.localeCompare(a.trade_date); return d !== 0 ? d : b.id.localeCompare(a.id); });
-              const months: Record<string, Trade[]> = {};
-              sorted.forEach(t => { const m = t.trade_date.slice(0, 7); if (!months[m]) months[m] = []; months[m].push(t); });
-              const monthKeys = Object.keys(months).sort((a, b) => b.localeCompare(a));
-              return monthKeys.map(monthKey => {
-                const monthTrades = months[monthKey];
-                const [y, m] = monthKey.split("-");
-                const label = `${y}년 ${parseInt(m)}월`;
-                const isOpen = expandedMonths.has(monthKey);
-                const toggleMonth = () => setExpandedMonths(prev => { const next = new Set(prev); if (next.has(monthKey)) next.delete(monthKey); else next.add(monthKey); return next; });
-                const buyTotal = monthTrades.filter(t => t.side === "BUY").reduce((s, t) => s + t.quantity * t.price, 0);
-                const sellTotal = monthTrades.filter(t => t.side === "SELL").reduce((s, t) => s + t.quantity * t.price, 0);
+              const days: Record<string, Trade[]> = {};
+              sorted.forEach(t => { const d = t.trade_date.slice(0, 10); if (!days[d]) days[d] = []; days[d].push(t); });
+              const dayKeys = Object.keys(days).sort((a, b) => b.localeCompare(a));
+              const weekdayNames = ["일", "월", "화", "수", "목", "금", "토"];
+              return dayKeys.map(dayKey => {
+                const dayTrades = days[dayKey];
+                const [y, m, d] = dayKey.split("-").map(Number);
+                const dateObj = new Date(y, m - 1, d);
+                const label = `${y}년 ${m}월 ${d}일 (${weekdayNames[dateObj.getDay()]})`;
+                const isOpen = expandedDates.has(dayKey);
+                const toggleDay = () => setExpandedDates(prev => { const next = new Set(prev); if (next.has(dayKey)) next.delete(dayKey); else next.add(dayKey); return next; });
+                const buyTotal = dayTrades.filter(t => t.side === "BUY").reduce((s, t) => s + t.quantity * t.price, 0);
+                const sellTotal = dayTrades.filter(t => t.side === "SELL").reduce((s, t) => s + t.quantity * t.price, 0);
                 return (
-                  <div key={monthKey} style={{ marginBottom: 8 }}>
-                    <button onClick={toggleMonth} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: "#e2e8f0" }}>
+                  <div key={dayKey} style={{ marginBottom: 8 }}>
+                    <button onClick={toggleDay} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", cursor: "pointer", color: "#e2e8f0" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
-                        <span style={{ fontSize: 11, color: "#64748b" }}>{monthTrades.length}건</span>
+                        <span style={{ fontSize: 11, color: "#64748b" }}>{dayTrades.length}건</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                         {buyTotal > 0 && <span style={{ fontSize: 11, color: "#ef4444" }}>매수 {fmt(buyTotal)}원</span>}
@@ -1285,7 +1287,7 @@ export default function Home() {
                     </button>
                     {isOpen && (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
-                        {monthTrades.map(t => {
+                        {dayTrades.map(t => {
                           const inst = instruments.find(i => i.id === t.instrument_id); const hm = !!t.note?.trim(); const isEd = editTrade?.id === t.id;
                           if (isEd) return (
                             <div key={t.id} style={{ ...cs, padding: 16, border: "1px solid rgba(124,58,237,0.25)" }}>
