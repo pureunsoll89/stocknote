@@ -545,13 +545,16 @@ export default function Home() {
     const totalEval = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
     const totalUnrealized = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
     const totalRealized = allRealizedPnl + priorRealizedPnl;
-    // 순 투자금: 실현이익은 차감, 실현손실은 가산 → 실제로 내 돈에서 나가서 아직 회수 안 된 금액
-    const totalInvested = currentCost - totalRealized;
+    // 투자금 = 총입금 - 총출금 (정의)
+    //        = 현재 현금 + 보유원금 - 누적 실현손익 (회계 등식으로 풀어쓴 것)
+    // 입금↑→투자금↑, 출금↓→투자금↓, 매수/매도는 무영향
+    const totalInvested = cash + currentCost - totalRealized;
     const totalTrades = trades.length;
     const noMemo = trades.filter(t => !t.note?.trim()).length;
-    const totalReturnRate = totalInvested > 0 ? (totalUnrealized / totalInvested) * 100 : 0;
+    // 평가 수익률: 현재 보유 종목의 평가손익을 매수원금 대비 %로 (표준 metric)
+    const totalReturnRate = currentCost > 0 ? (totalUnrealized / currentCost) * 100 : 0;
     return { totalInvested, currentCost, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
-  }, [positions, trades, allRealizedPnl, priorRealizedPnl]);
+  }, [positions, trades, allRealizedPnl, priorRealizedPnl, cash]);
 
   const totalAssets = totals.totalEval + cash;
 
