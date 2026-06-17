@@ -745,7 +745,7 @@ export default function Home() {
                 </div>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12, color: "#64748b" }}>
-                <span>투자원금 {fmt(totals.totalInvested)}원</span>
+                <span>투자원금 {fmt(totals.totalInvested)}원{(() => { if (totals.totalInvested <= 0) return ""; const rate = ((totalAssets - totals.totalInvested) / totals.totalInvested) * 100; return <> <b style={{ color: rate >= 0 ? "#ef4444" : "#3b82f6" }}>{rate >= 0 ? "+" : ""}{rate.toFixed(2)}%</b></>; })()}</span>
                 <span>기록률 <b style={{ color: "#a78bfa" }}>{totals.totalTrades > 0 ? Math.round(((totals.totalTrades - totals.noMemo) / totals.totalTrades) * 100) : 0}%</b></span>
                 <span>{positions.length}종목 · {totals.totalTrades}건</span>
               </div>
@@ -817,7 +817,7 @@ export default function Home() {
                     <div style={{ marginTop: 8, paddingLeft: 46, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
-                        <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2 }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
+                        {(() => { const rel = (dayChanges[p.id] || 0) - (marketIndex[p.market]?.changeRate || 0); return <div style={{ fontSize: 11, color: rel >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2 }}>{p.market} 대비 {rel >= 0 ? "+" : ""}{rel.toFixed(2)}%</div>; })()}
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: "#b97070" }}>매수{buyCount}건</div>
@@ -852,7 +852,7 @@ export default function Home() {
                   </div>
                   <div style={{ flex: "0 0 auto", textAlign: "right", marginRight: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", whiteSpace: "nowrap" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
-                    <div style={{ fontSize: 11, color: (marketIndex[p.market]?.changeRate || 0) >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{p.market} {(marketIndex[p.market]?.changeRate || 0) >= 0 ? "+" : ""}{(marketIndex[p.market]?.changeRate || 0).toFixed(2)}%</div>
+                    {(() => { const rel = (dayChanges[p.id] || 0) - (marketIndex[p.market]?.changeRate || 0); return <div style={{ fontSize: 11, color: rel >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{p.market} 대비 {rel >= 0 ? "+" : ""}{rel.toFixed(2)}%</div>; })()}
                   </div>
                   <div style={{ flex: "0 0 auto", textAlign: "right" }}>
                     <div style={{ fontSize: 11, color: "#b97070", whiteSpace: "nowrap" }}>매수{buyCount}건</div>
