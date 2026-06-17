@@ -369,15 +369,25 @@ export default function Home() {
     setEditingNote(null);
   }
 
-  async function loadData() {
-    try { const mRes = await fetch("/api/market-index"); const mData = await mRes.json(); setMarketIndex(mData); } catch (e) {}
-    setLoading(true);
+  async function loadData(silent = false) {
+    if (!silent) setLoading(true);
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     if (!currentUser) { setLoading(false); return; }
-    const { data: i } = await supabase.from("instruments").select("*").eq("user_id", currentUser.id);
-    const { data: t } = await supabase.from("trades").select("*").eq("user_id", currentUser.id);
-    const { data: c } = await supabase.from("cash_transactions").select("*").eq("user_id", currentUser.id);
-    const { data: settings } = await supabase.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle();
+
+    // 모든 데이터를 한 번에 병렬로 가져오기 (이전엔 순차적으로 7개를 줄세워서 느렸음)
+    const [iRes, tRes, cRes, sRes, mRes] = await Promise.all([
+      supabase.from("instruments").select("*").eq("user_id", currentUser.id),
+      supabase.from("trades").select("*").eq("user_id", currentUser.id),
+      supabase.from("cash_transactions").select("*").eq("user_id", currentUser.id),
+      supabase.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle(),
+      fetch("/api/market-index").then(r => r.json()).catch(() => null),
+    ]);
+    const i = iRes.data;
+    const t = tRes.data;
+    const c = cRes.data;
+    const settings = sRes.data;
+    if (mRes) setMarketIndex(mRes);
+
     const priorPnl = settings?.prior_realized_pnl || 0;
     setPriorRealizedPnl(priorPnl);
     setPriorPnlInput(priorPnl ? String(priorPnl) : "");
@@ -410,7 +420,7 @@ export default function Home() {
 
     setInstruments(i || []); setTrades(t || []); setCashTxns(cashList);
     if (i && i.length > 0) setForm(f => ({ ...f, instrument_id: f.instrument_id || i[0].id }));
-    setLoading(false);
+    if (!silent) setLoading(false);
 
     if (i && i.length > 0) {
       const prices: Record<string, number> = {};
@@ -473,7 +483,7 @@ export default function Home() {
   async function addTrade() {
     if (!form.quantity || !form.price || !form.instrument_id) return;
     const { data } = await supabase.from("trades").insert({ instrument_id: form.instrument_id, trade_date: form.trade_date, side: form.side, quantity: parseInt(form.quantity), price: parseInt(form.price), note: form.note.trim(), user_id: user.id }).select().single();
-    if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "", note: "" })); navigateTo("dashboard"); loadData(); }
+    if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "", note: "" })); navigateTo("dashboard"); loadData(true); }
   }
 
   async function saveEdit() {
@@ -1146,7 +1156,7 @@ export default function Home() {
                 <label style={{ fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" }}>단가</label>
                 <input type="number" placeholder="0" value={form.price} onChange={(e: any) => setForm(f => ({ ...f, price: e.target.value }))} style={{ ...is, fontSize: 12, padding: "8px 10px" }} />
               </div>
-              <button onClick={async () => { if (!form.quantity || !form.price || !selInst) return; const { data } = await supabase.from("trades").insert({ instrument_id: selInst, trade_date: form.trade_date, side: "BUY", quantity: parseInt(form.quantity), price: parseInt(form.price), note: "추가 매수", user_id: user.id }).select().single(); if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "" })); loadData(); } }} disabled={!form.quantity || !form.price} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: form.quantity && form.price ? "#ef4444" : "rgba(255,255,255,0.05)", color: form.quantity && form.price ? "#fff" : "#475569", fontSize: 12, fontWeight: 700, cursor: form.quantity && form.price ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}>매수</button>
+              <button onClick={async () => { if (!form.quantity || !form.price || !selInst) return; const { data } = await supabase.from("trades").insert({ instrument_id: selInst, trade_date: form.trade_date, side: "BUY", quantity: parseInt(form.quantity), price: parseInt(form.price), note: "추가 매수", user_id: user.id }).select().single(); if (data) { setTrades(p => [...p, data]); setForm(f => ({ ...f, quantity: "", price: "" })); loadData(true); } }} disabled={!form.quantity || !form.price} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: form.quantity && form.price ? "#ef4444" : "rgba(255,255,255,0.05)", color: form.quantity && form.price ? "#fff" : "#475569", fontSize: 12, fontWeight: 700, cursor: form.quantity && form.price ? "pointer" : "not-allowed", whiteSpace: "nowrap" }}>매수</button>
             </div>
             {form.quantity && form.price && (() => {
               const buyAmt = parseInt(form.quantity) * parseInt(form.price);
