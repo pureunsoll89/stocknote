@@ -1,16 +1,18 @@
+// app/api/global-indicators/route.ts
+//
+// 변경: items 배열에 sp500, nasdaq 추가
+// 응답 형식 동일: { [key]: { name, unit, yahooSymbol, price, change } }
+
 import { NextResponse } from "next/server";
 
-// [핵심 1] 이 API 라우트의 전체 결과를 60초 동안 캐싱 (ISR 모드 활성화)
-export const revalidate = 60; 
+export const revalidate = 60;
 
 async function fetchYahoo(symbol: string) {
   try {
-    // [핵심 2] 타임스탬프 제거: Next.js가 동일한 요청으로 인식하고 캐싱할 수 있도록 원래 URL 사용
     const res = await fetch(
       `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`,
-      { 
+      {
         headers: { "User-Agent": "Mozilla/5.0" },
-        // 개별 fetch 단위가 아닌 파일 전체(revalidate=60)로 캐싱하므로 옵션을 비워둡니다.
       }
     );
     const data = await res.json();
@@ -31,6 +33,8 @@ async function fetchYahoo(symbol: string) {
 export async function GET() {
   const items = [
     { key: "usdkrw", symbol: "KRW=X", name: "USD/KRW 환율", unit: "원" },
+    { key: "sp500", symbol: "^GSPC", name: "S&P 500", unit: "" },
+    { key: "nasdaq", symbol: "^IXIC", name: "NASDAQ", unit: "" },
     { key: "dxy", symbol: "DX-Y.NYB", name: "달러 인덱스", unit: "" },
     { key: "us10y", symbol: "^TNX", name: "미국 10년물 금리", unit: "%" },
     { key: "brent", symbol: "BZ=F", name: "브렌트유 선물", unit: "$" },
@@ -42,12 +46,14 @@ export async function GET() {
 
   const results: Record<string, any> = {};
 
-  await Promise.all(items.map(async ({ key, symbol, name, unit }) => {
-    const data = await fetchYahoo(symbol);
-    if (data && data.price > 0) {
-      results[key] = { name, unit, yahooSymbol: symbol, price: data.price, change: data.change };
-    }
-  }));
+  await Promise.all(
+    items.map(async ({ key, symbol, name, unit }) => {
+      const data = await fetchYahoo(symbol);
+      if (data && data.price > 0) {
+        results[key] = { name, unit, yahooSymbol: symbol, price: data.price, change: data.change };
+      }
+    })
+  );
 
   if (results["gold"]?.price && results["usdkrw"]?.price) {
     const usdPerOz = results["gold"].price;

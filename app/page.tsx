@@ -407,12 +407,13 @@ export default function Home() {
     // USD/KRW 환율 (미국 주식 가격 원화 환산용)
     const currentFxRate = gRes?.usdkrw?.price || 1350;
     setFxRate(currentFxRate);
-    setFxChangeRate(gRes?.usdkrw?.changeRate || 0);
+    setFxChangeRate(gRes?.usdkrw?.change || 0);
 
-    // 미국 지수 (S&P 500, NASDAQ Composite) — 키 이름이 응답마다 다를 수 있어 여러 변형 시도
-    const sp500Rate = gRes?.snp500?.changeRate ?? gRes?.sp500?.changeRate ?? gRes?.spx?.changeRate ?? gRes?.snp?.changeRate ?? 0;
-    const nasdaqRate = gRes?.nasdaq?.changeRate ?? gRes?.ndx?.changeRate ?? gRes?.ixic?.changeRate ?? gRes?.nas100?.changeRate ?? 0;
-    setUsBenchmarks({ sp500: sp500Rate, nasdaq: nasdaqRate });
+    // 미국 지수 (S&P 500, NASDAQ Composite)
+    setUsBenchmarks({
+      sp500: gRes?.sp500?.change || 0,
+      nasdaq: gRes?.nasdaq?.change || 0,
+    });
 
     const priorPnl = settings?.prior_realized_pnl || 0;
     setPriorRealizedPnl(priorPnl);
@@ -478,10 +479,11 @@ export default function Home() {
       if (mData) setMarketIndex(mData);
       currentFxRate = gData?.usdkrw?.price || fxRate;
       setFxRate(currentFxRate);
-      setFxChangeRate(gData?.usdkrw?.changeRate || 0);
-      const sp500Rate = gData?.snp500?.changeRate ?? gData?.sp500?.changeRate ?? gData?.spx?.changeRate ?? gData?.snp?.changeRate ?? 0;
-      const nasdaqRate = gData?.nasdaq?.changeRate ?? gData?.ndx?.changeRate ?? gData?.ixic?.changeRate ?? gData?.nas100?.changeRate ?? 0;
-      setUsBenchmarks({ sp500: sp500Rate, nasdaq: nasdaqRate });
+      setFxChangeRate(gData?.usdkrw?.change || 0);
+      setUsBenchmarks({
+        sp500: gData?.sp500?.change || 0,
+        nasdaq: gData?.nasdaq?.change || 0,
+      });
     } catch (e) {}
     const prices: Record<string, number> = {};
     const changes: Record<string, number> = {};
