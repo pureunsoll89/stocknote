@@ -461,15 +461,16 @@ export default function Home() {
   async function refreshPrices() {
     if (instruments.length === 0) return;
     setPriceLoading(true);
+    let currentFxRate: number = fxRate;
     try {
       const [mData, gData] = await Promise.all([
         fetch("/api/market-index").then(r => r.json()).catch(() => null),
         fetch("/api/global-indicators").then(r => r.json()).catch(() => null),
       ]);
       if (mData) setMarketIndex(mData);
-      var currentFxRate = gData?.usdkrw?.price || fxRate;
+      currentFxRate = gData?.usdkrw?.price || fxRate;
       setFxRate(currentFxRate);
-    } catch (e) { var currentFxRate = fxRate; }
+    } catch (e) {}
     const prices: Record<string, number> = {};
     const changes: Record<string, number> = {};
     await Promise.all(instruments.map(async (inst: any) => {
