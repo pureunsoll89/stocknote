@@ -8,7 +8,7 @@ const supabase = createClient(
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtdmN0amNjaWVlcHpqamVvZnBjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNDU1NTEsImV4cCI6MjA4NjkyMTU1MX0.-iPj_DOhvUd9JIdbmaE-iEg0ZAusjSprQsv2K0vNw1w"
 );
 
-interface Instrument { id: string; symbol: string; name: string; market: string; memo?: string; }
+interface Instrument { id: string; symbol: string; name: string; market: string; country?: string; memo?: string; }
 interface Trade { id: string; instrument_id: string; trade_date: string; side: string; quantity: number; price: number; fee: number; note: string; }
 interface CashTxn { id: string; txn_date: string; type: string; amount: number; note: string; }
 
@@ -92,7 +92,7 @@ export default function Home() {
   const [cashForm, setCashForm] = useState({ txn_date: new Date().toISOString().split("T")[0], type: "DEPOSIT", amount: "", note: "" });
   const [hideAmounts, setHideAmounts] = useState(false);
   const [showNewInst, setShowNewInst] = useState(false);
-  const [newInst, setNewInst] = useState({ symbol: "", name: "", market: "KOSPI" });
+  const [newInst, setNewInst] = useState({ symbol: "", name: "", market: "KOSPI", country: "KR" });
   const [currentPrices, setCurrentPrices] = useState<Record<string, number>>({});
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -121,6 +121,7 @@ export default function Home() {
   const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
   const [priorRealizedPnl, setPriorRealizedPnl] = useState<number>(0);
   const [priorPnlInput, setPriorPnlInput] = useState<string>("");
+  const [countryFilter, setCountryFilter] = useState<"ALL" | "KR" | "US">("ALL");
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
@@ -476,8 +477,8 @@ export default function Home() {
 
   async function addInstrument() {
     if (!newInst.name || !newInst.symbol) return;
-    const { data } = await supabase.from("instruments").insert({ symbol: newInst.symbol, name: newInst.name, market: newInst.market, user_id: user.id }).select().single();
-    if (data) { setInstruments(p => [...p, data]); setForm(f => ({ ...f, instrument_id: data.id })); setNewInst({ symbol: "", name: "", market: "KOSPI" }); setShowNewInst(false); }
+    const { data } = await supabase.from("instruments").insert({ symbol: newInst.symbol, name: newInst.name, market: newInst.market, country: newInst.country, user_id: user.id }).select().single();
+    if (data) { setInstruments(p => [...p, data]); setForm(f => ({ ...f, instrument_id: data.id })); setNewInst({ symbol: "", name: "", market: "KOSPI", country: "KR" }); setShowNewInst(false); }
   }
 
   async function addTrade() {
@@ -530,6 +531,23 @@ export default function Home() {
     return sum + pos.realizedPnl;
   }, 0), [instruments, trades]);
 
+  // 국가 필터 적용된 positions / realized
+  const filteredPositions = useMemo(() =>
+    countryFilter === "ALL" ? positions : positions.filter((p: any) => (p.country || "KR") === countryFilter),
+  [positions, countryFilter]);
+
+  const filteredAllRealizedPnl = useMemo(() => {
+    if (countryFilter === "ALL") return allRealizedPnl;
+    return instruments.reduce((sum: number, inst: any) => {
+      if ((inst.country || "KR") !== countryFilter) return sum;
+      const it = trades.filter((t: any) => t.instrument_id === inst.id);
+      if (!it.length) return sum;
+      const isETF = isETFName(inst.name);
+      const pos = calculatePosition(it, isETF ? "ETF" : inst.market);
+      return sum + pos.realizedPnl;
+    }, 0);
+  }, [instruments, trades, allRealizedPnl, countryFilter]);
+
   // 현재 현금 잔액
   const cash = useMemo(() => calculateCash(cashTxns, trades, instruments), [cashTxns, trades, instruments]);
 
@@ -550,35 +568,37 @@ export default function Home() {
   }, [cashTxns, trades, instruments]);
 
   const totals = useMemo(() => {
-    // 현재 보유 종목의 매수원금 (avg cost basis)
-    const currentCost = positions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
-    const totalEval = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
-    const totalUnrealized = positions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
-    const totalRealized = allRealizedPnl + priorRealizedPnl;
-    // 투자원금 = 총자산 − 누적 실현손익 − 평가손익
-    //          = 총 입금 − 총 출금 (회계 등식상 동등)
-    // 즉, 총자산에서 모든 손익을 제거하면 진짜 원금이 남는다.
-    const totalInvested = (totalEval + cash) - totalRealized - totalUnrealized;
+    // 현재 보유 종목의 매수원금 (avg cost basis) — 필터 적용
+    const currentCost = filteredPositions.reduce((s: number, p: any) => s + p.avgPrice * p.totalQty, 0);
+    const totalEval = filteredPositions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty), 0);
+    const totalUnrealized = filteredPositions.reduce((s: number, p: any) => s + (p.currentPrice > 0 ? (p.currentPrice - p.avgPrice) * p.totalQty : 0), 0);
+    // prior 실현손익은 KR 거래로 가정 → US 필터에선 제외
+    const includePrior = countryFilter !== "US";
+    const totalRealized = filteredAllRealizedPnl + (includePrior ? priorRealizedPnl : 0);
+    // 현금은 원화 → US 필터에선 제외
+    const effectiveCash = countryFilter !== "US" ? cash : 0;
+    // 투자원금 = 총자산 − 누적 실현손익 − 평가손익 = 총입금 − 총출금
+    const totalInvested = (totalEval + effectiveCash) - totalRealized - totalUnrealized;
     const totalTrades = trades.length;
     const noMemo = trades.filter(t => !t.note?.trim()).length;
-    // 평가 수익률: 보유 종목의 평가손익을 매수원금 대비 %로 (표준 metric)
     const totalReturnRate = currentCost > 0 ? (totalUnrealized / currentCost) * 100 : 0;
-    return { totalInvested, currentCost, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate };
-  }, [positions, trades, allRealizedPnl, priorRealizedPnl, cash]);
+    return { totalInvested, currentCost, totalEval, totalUnrealized, totalRealized, totalTrades, noMemo, totalReturnRate, effectiveCash };
+  }, [filteredPositions, filteredAllRealizedPnl, trades, priorRealizedPnl, cash, countryFilter]);
 
-  const totalAssets = totals.totalEval + cash;
+  const totalAssets = totals.totalEval + totals.effectiveCash;
 
-  // 자산 비중 (각 종목 + 현금)
+  // 자산 비중 (각 종목 + 현금) — 필터 적용
   const allocation = useMemo(() => {
-    const cashPositive = Math.max(0, cash);
+    const includeCash = countryFilter !== "US";
+    const cashPositive = includeCash ? Math.max(0, cash) : 0;
     const denom = totals.totalEval + cashPositive;
     if (denom <= 0) return { items: [] as any[], cashWeight: 0, denom: 0 };
-    const items = [...positions]
+    const items = [...filteredPositions]
       .map((p: any) => ({ id: p.id, name: p.name, symbol: p.symbol, amount: p.currentPrice > 0 ? p.currentPrice * p.totalQty : p.avgPrice * p.totalQty }))
       .sort((a, b) => b.amount - a.amount)
       .map((p, i) => ({ ...p, weight: p.amount / denom, color: ALLOC_COLORS[i % ALLOC_COLORS.length] }));
     return { items, cashWeight: cashPositive / denom, denom };
-  }, [positions, cash, totals.totalEval]);
+  }, [filteredPositions, cash, totals.totalEval, countryFilter]);
 
   // 매매 후 예상 현금
   const projectedCash = useMemo(() => {
@@ -778,9 +798,18 @@ export default function Home() {
             </div>
           )}
 
+          {/* Country Filter */}
+          {positions.length > 0 && (
+            <div style={{ display: "flex", gap: 4, marginBottom: 10, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3 }}>
+              {([["ALL","종합"],["KR","🇰🇷 한국"],["US","🇺🇸 미국"]] as const).map(([k,l]) => (
+                <button key={k} onClick={() => setCountryFilter(k as any)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: countryFilter === k ? 700 : 500, background: countryFilter === k ? "rgba(255,255,255,0.08)" : "transparent", color: countryFilter === k ? "#f1f5f9" : "#64748b", cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
+          )}
+
           {/* Stock Cards */}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {[...positions].sort((a: any, b: any) => (b.currentPrice > 0 ? b.currentPrice * b.totalQty : b.avgPrice * b.totalQty) - (a.currentPrice > 0 ? a.currentPrice * a.totalQty : a.avgPrice * a.totalQty)).map((p: any) => {
+            {[...filteredPositions].sort((a: any, b: any) => (b.currentPrice > 0 ? b.currentPrice * b.totalQty : b.avgPrice * b.totalQty) - (a.currentPrice > 0 ? a.currentPrice * a.totalQty : a.avgPrice * a.totalQty)).map((p: any) => {
               const buyCount = trades.filter(t => t.instrument_id === p.id && t.side === "BUY").length;
               const sellCount = trades.filter(t => t.instrument_id === p.id && t.side === "SELL").length;
               const isExpanded = expandedCards.has(p.id);
@@ -871,18 +900,26 @@ export default function Home() {
 
         {/* ============ ALLOCATION (자산 비중) ============ */}
         {view === "allocation" && <div>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
             <div style={{ fontSize: 16, fontWeight: 800 }}>자산 비중</div>
             <button onClick={() => setHideAmounts(h => !h)} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)", background: hideAmounts ? "rgba(45,212,191,0.1)" : "rgba(255,255,255,0.03)", color: hideAmounts ? "#2dd4bf" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
               {hideAmounts ? "👁 금액 표시" : "🙈 금액 숨기기"}
             </button>
           </div>
 
+          {positions.length > 0 && (
+            <div style={{ display: "flex", gap: 4, marginBottom: 12, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 3 }}>
+              {([["ALL","종합"],["KR","🇰🇷 한국"],["US","🇺🇸 미국"]] as const).map(([k,l]) => (
+                <button key={k} onClick={() => setCountryFilter(k as any)} style={{ flex: 1, padding: "7px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: countryFilter === k ? 700 : 500, background: countryFilter === k ? "rgba(255,255,255,0.08)" : "transparent", color: countryFilter === k ? "#f1f5f9" : "#64748b", cursor: "pointer" }}>{l}</button>
+              ))}
+            </div>
+          )}
+
           {(allocation.items.length > 0 || allocation.cashWeight > 0) ? (
             <div style={{ ...cs, padding: "20px" }}>
               {/* Subtext */}
               <div style={{ textAlign: "center", fontSize: 12, color: "#64748b", marginBottom: 8 }}>
-                {hideAmounts ? <span>평가 ●●● · 현금 ●●●</span> : <>평가 {fmt(totals.totalEval)}원 · 현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b></>}
+                {hideAmounts ? <span>{countryFilter === "US" ? "평가 ●●●" : "평가 ●●● · 현금 ●●●"}</span> : <>평가 {fmt(totals.totalEval)}원{countryFilter !== "US" && <> · 현금 <b style={{ color: cash >= 0 ? "#2dd4bf" : "#f87171" }}>{fmt(cash)}원</b></>}</>}
               </div>
 
               {/* Donut Chart */}
@@ -1537,19 +1574,36 @@ export default function Home() {
               : <div style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>등록된 종목이 없습니다</div>}
               <button onClick={() => setShowNewInst(!showNewInst)} style={{ marginTop: 8, padding: "6px 12px", borderRadius: 6, border: "1px dashed rgba(255,255,255,0.1)", background: "transparent", color: "#8b5cf6", fontSize: 12, cursor: "pointer", fontWeight: 600 }}>{showNewInst ? "취소" : "+ 새 종목 추가"}</button>
               {showNewInst && <div style={{ marginTop: 10, padding: 14, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                <input placeholder="종목명 검색 (예: 삼성전자, LIG넥스원)" value={searchQuery} onChange={(e: any) => searchStock(e.target.value)} style={is} autoFocus />
-                {searching && <div style={{ fontSize: 12, color: "#64748b", padding: "8px 0" }}>검색 중...</div>}
-                {searchResults.length > 0 && <div style={{ marginTop: 8, maxHeight: 200, overflowY: "auto", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
-                  {searchResults.map((item: any, idx: number) => (
-                    <div key={idx} onClick={() => selectStock(item)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                      onMouseEnter={(e: any) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
-                      onMouseLeave={(e: any) => e.currentTarget.style.background = "transparent"}>
-                      <div><span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{item.name}</span><span style={{ fontSize: 12, color: "#64748b", marginLeft: 8 }}>{item.symbol}</span></div>
-                      <span style={{ fontSize: 11, color: "#8b5cf6", fontWeight: 600 }}>{item.market}</span>
-                    </div>
+                <div style={{ display: "flex", gap: 4, marginBottom: 10, background: "rgba(255,255,255,0.03)", borderRadius: 6, padding: 2 }}>
+                  {(["KR", "US"] as const).map(c => (
+                    <button key={c} onClick={() => setNewInst(n => ({ ...n, country: c, market: c === "KR" ? "KOSPI" : "NASDAQ" }))} style={{ flex: 1, padding: "6px 0", borderRadius: 5, border: "none", fontSize: 12, fontWeight: newInst.country === c ? 700 : 500, background: newInst.country === c ? "rgba(255,255,255,0.08)" : "transparent", color: newInst.country === c ? "#f1f5f9" : "#64748b", cursor: "pointer" }}>{c === "KR" ? "🇰🇷 한국 (검색)" : "🇺🇸 미국 (수동입력)"}</button>
                   ))}
-                </div>}
-                {searchQuery && !searching && searchResults.length === 0 && <div style={{ fontSize: 12, color: "#64748b", padding: "8px 0" }}>검색 결과 없음</div>}
+                </div>
+
+                {newInst.country === "KR" ? (<>
+                  <input placeholder="종목명 검색 (예: 삼성전자, LIG넥스원)" value={searchQuery} onChange={(e: any) => searchStock(e.target.value)} style={is} autoFocus />
+                  {searching && <div style={{ fontSize: 12, color: "#64748b", padding: "8px 0" }}>검색 중...</div>}
+                  {searchResults.length > 0 && <div style={{ marginTop: 8, maxHeight: 200, overflowY: "auto", borderRadius: 8, border: "1px solid rgba(255,255,255,0.06)" }}>
+                    {searchResults.map((item: any, idx: number) => (
+                      <div key={idx} onClick={() => selectStock(item)} style={{ padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid rgba(255,255,255,0.04)", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                        onMouseEnter={(e: any) => e.currentTarget.style.background = "rgba(255,255,255,0.05)"}
+                        onMouseLeave={(e: any) => e.currentTarget.style.background = "transparent"}>
+                        <div><span style={{ fontSize: 14, fontWeight: 700, color: "#e2e8f0" }}>{item.name}</span><span style={{ fontSize: 12, color: "#64748b", marginLeft: 8 }}>{item.symbol}</span></div>
+                        <span style={{ fontSize: 11, color: "#8b5cf6", fontWeight: 600 }}>{item.market}</span>
+                      </div>
+                    ))}
+                  </div>}
+                  {searchQuery && !searching && searchResults.length === 0 && <div style={{ fontSize: 12, color: "#64748b", padding: "8px 0" }}>검색 결과 없음</div>}
+                </>) : (<>
+                  <input placeholder="티커 (예: AAPL, TSLA)" value={newInst.symbol} onChange={(e: any) => setNewInst(n => ({ ...n, symbol: e.target.value.toUpperCase() }))} style={{ ...is, marginBottom: 8 }} autoFocus />
+                  <input placeholder="종목명 (예: Apple Inc.)" value={newInst.name} onChange={(e: any) => setNewInst(n => ({ ...n, name: e.target.value }))} style={{ ...is, marginBottom: 8 }} />
+                  <select value={newInst.market} onChange={(e: any) => setNewInst(n => ({ ...n, market: e.target.value }))} style={{ ...is, marginBottom: 10 }}>
+                    <option value="NASDAQ">NASDAQ</option>
+                    <option value="NYSE">NYSE</option>
+                  </select>
+                  <button onClick={addInstrument} disabled={!newInst.symbol || !newInst.name} style={{ width: "100%", padding: "10px 0", borderRadius: 8, border: "none", background: newInst.symbol && newInst.name ? "linear-gradient(135deg,#3b82f6,#7c3aed)" : "rgba(255,255,255,0.05)", color: newInst.symbol && newInst.name ? "#fff" : "#475569", fontSize: 13, fontWeight: 700, cursor: newInst.symbol && newInst.name ? "pointer" : "not-allowed" }}>추가하기</button>
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#64748b", lineHeight: 1.5 }}>※ 미국 주식 가격은 <b style={{ color: "#94a3b8" }}>원 환산</b> 으로 입력해주세요 (증권사 앱에서 원 환산 금액 확인 가능). 실시간 시세는 추후 지원 예정.</div>
+                </>)}
               </div>}
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
