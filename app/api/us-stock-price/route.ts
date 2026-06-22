@@ -1,8 +1,10 @@
 // app/api/us-stock-price/route.ts
 //
-// 미국 주식 실시간 시세 (Yahoo Finance 사용, 무료)
-// 사용법: /api/us-stock-price?symbol=AAPL
-// 응답: { price: 190.5, changeRate: 1.23, change: 2.3, name: "Apple Inc." }
+// 미국 주식 실시간 시세 (Yahoo Finance v8 chart endpoint)
+// 사용법: /api/us-stock-price?symbol=DRAM
+// 응답: { price: 76.71, changeRate: 9.66, change: 6.76, currency: "USD" }
+//
+// v7 /finance/quote 는 클라우드에서 자주 막혀서 v8 /finance/chart 사용
 
 import { NextResponse } from "next/server";
 
@@ -12,9 +14,8 @@ export async function GET(request: Request) {
   if (!symbol) return NextResponse.json({}, { status: 400 });
 
   try {
-    // Yahoo Finance unofficial endpoint
     const res = await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`,
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=2d`,
       {
         headers: {
           "User-Agent":
@@ -25,21 +26,28 @@ export async function GET(request: Request) {
       }
     );
 
-    if (!res.ok) {
+    if (!res.ok) return NextResponse.json({});
+
+    const data = await res.json();
+    const result = data?.chart?.result?.[0];
+    const meta = result?.meta;
+
+    if (!meta || meta.regularMarketPrice === undefined) {
       return NextResponse.json({});
     }
 
-    const data = await res.json();
-    const quote = data?.quoteResponse?.result?.[0];
-
-    if (!quote) return NextResponse.json({});
+    const price = meta.regularMarketPrice;
+    const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? price;
+    const change = price - prevClose;
+    const changeRate = prevClose ? (change / prevClose) * 100 : 0;
 
     return NextResponse.json({
-      price: quote.regularMarketPrice,
-      changeRate: quote.regularMarketChangePercent,
-      change: quote.regularMarketChange,
-      name: quote.shortName || quote.longName,
-      currency: quote.currency || "USD",
+      price,
+      changeRate,
+      change,
+      symbol: meta.symbol,
+      currency: meta.currency || "USD",
+      exchange: meta.exchangeName,
     });
   } catch (e) {
     console.error("US stock price fetch error:", e);
