@@ -125,6 +125,7 @@ export default function Home() {
   const [fxRate, setFxRate] = useState<number>(1350);
   const [fxChangeRate, setFxChangeRate] = useState<number>(0);
   const [usBenchmarks, setUsBenchmarks] = useState<{ sp500: number; nasdaq: number }>({ sp500: 0, nasdaq: 0 });
+  const [usdPrices, setUsdPrices] = useState<Record<string, number>>({});
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
@@ -452,18 +453,27 @@ export default function Home() {
     if (i && i.length > 0) {
       const prices: Record<string, number> = {};
       const changes: Record<string, number> = {};
+      const usds: Record<string, number> = {};
       await Promise.all(i.map(async (inst: any) => {
         try {
           const isUS = (inst.country || "KR") === "US";
           const url = isUS ? `/api/us-stock-price?symbol=${inst.symbol}` : `/api/stock-price?symbol=${inst.symbol}`;
           const res = await fetch(url);
           const data = await res.json();
-          if (data.price) prices[inst.id] = isUS ? Math.round(data.price * currentFxRate) : data.price;
+          if (data.price) {
+            if (isUS) {
+              usds[inst.id] = data.price;
+              prices[inst.id] = Math.round(data.price * currentFxRate);
+            } else {
+              prices[inst.id] = data.price;
+            }
+          }
           if (data.changeRate !== undefined) changes[inst.id] = data.changeRate;
         } catch (e) {}
       }));
       setCurrentPrices(prices);
       setDayChanges(changes);
+      setUsdPrices(usds);
     }
   }
 
@@ -487,17 +497,25 @@ export default function Home() {
     } catch (e) {}
     const prices: Record<string, number> = {};
     const changes: Record<string, number> = {};
+    const usds: Record<string, number> = {};
     await Promise.all(instruments.map(async (inst: any) => {
       try {
         const isUS = (inst.country || "KR") === "US";
         const url = isUS ? `/api/us-stock-price?symbol=${inst.symbol}` : `/api/stock-price?symbol=${inst.symbol}`;
         const res = await fetch(url);
         const data = await res.json();
-        if (data.price) prices[inst.id] = isUS ? Math.round(data.price * currentFxRate) : data.price;
+        if (data.price) {
+          if (isUS) {
+            usds[inst.id] = data.price;
+            prices[inst.id] = Math.round(data.price * currentFxRate);
+          } else {
+            prices[inst.id] = data.price;
+          }
+        }
         if (data.changeRate !== undefined) changes[inst.id] = data.changeRate;
       } catch (e) {}
     }));
-    setCurrentPrices(prices); setDayChanges(changes); setPriceLoading(false);
+    setCurrentPrices(prices); setDayChanges(changes); setUsdPrices(usds); setPriceLoading(false);
   }
 
   async function searchStock(q: string) {
@@ -660,6 +678,17 @@ export default function Home() {
   const instTrades = useMemo(() => selInst ? trades.filter(t => t.instrument_id === selInst).sort((a, b) => { const d = new Date(b.trade_date).getTime() - new Date(a.trade_date).getTime(); return d !== 0 ? d : a.id.localeCompare(b.id); }) : [], [trades, selInst]);
   const selPos = positions.find((p: any) => p.id === selInst);
   const selInstData = instruments.find(i => i.id === selInst);
+
+  // 상세 페이지 표시 헬퍼 (US 면 per-share 를 USD 로)
+  const isUSDetail = (selInstData?.country || "KR") === "US";
+  const detailCurrPrice = !selInst ? 0 : (isUSDetail
+    ? (usdPrices[selInst] || (selPos?.currentPrice ? selPos.currentPrice / fxRate : 0))
+    : (selPos?.currentPrice || 0));
+  const detailAvgPrice = isUSDetail
+    ? (selPos?.avgPrice ? selPos.avgPrice / fxRate : 0)
+    : (selPos?.avgPrice || 0);
+  // 가격 표시: US 면 $ 소수 2자리, KR 이면 원 (정수)
+  const dispPrice = (val: number) => isUSDetail ? `$${val.toFixed(2)}` : `${fmt(Math.round(val))}원`;
 
   // --- LOADING ---
   if (loading) return (
@@ -1165,10 +1194,10 @@ export default function Home() {
             </div>
             {selPos && (
               <div style={{ display: "flex", gap: 10, marginTop: 16, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.05)", fontSize: 12, color: "#64748b", flexWrap: "wrap" }}>
-                <span>평균단가 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.avgPrice)}원</b></span>
+                <span>평균단가 <b style={{ color: "#e2e8f0" }}>{dispPrice(detailAvgPrice)}</b></span>
                 <span>보유 <b style={{ color: "#e2e8f0" }}>{selPos.totalQty}주</b></span>
                 <span>{holdingWeeks(selPos.firstBuyDate)}</span>
-                <span style={{ color: (dayChanges[selInstData.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>오늘 {selPos.currentPrice > 0 ? fmt(Math.abs(Math.round(selPos.currentPrice * (dayChanges[selInstData.id] || 0) / (100 + (dayChanges[selInstData.id] || 0))))) + "원" : ""} ({(dayChanges[selInstData.id] || 0) >= 0 ? "+" : ""}{(dayChanges[selInstData.id] || 0).toFixed(1)}%) {(dayChanges[selInstData.id] || 0) >= 0 ? "상승" : "하락"}</span>
+                <span style={{ color: (dayChanges[selInstData.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>오늘 {detailCurrPrice > 0 ? dispPrice(Math.abs(detailCurrPrice * (dayChanges[selInstData.id] || 0) / (100 + (dayChanges[selInstData.id] || 0)))) : ""} ({(dayChanges[selInstData.id] || 0) >= 0 ? "+" : ""}{(dayChanges[selInstData.id] || 0).toFixed(1)}%) {(dayChanges[selInstData.id] || 0) >= 0 ? "상승" : "하락"}</span>
               </div>
             )}
           </div>
@@ -1177,20 +1206,20 @@ export default function Home() {
           {chartHigh > 0 && selPos && (
             <div style={{ ...cs, marginBottom: 8, padding: "10px 14px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12 }}>
-                <span style={{ color: "#94a3b8", fontWeight: 600 }}>매수 후 고점 <b style={{ color: "#ef4444" }}>{fmt(chartHigh)}원</b></span>
+                <span style={{ color: "#94a3b8", fontWeight: 600 }}>매수 후 고점 <b style={{ color: "#ef4444" }}>{dispPrice(chartHigh)}</b></span>
                 <span style={{ color: "#475569" }}>|</span>
-                <span style={{ fontWeight: 600 }}>현재 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.currentPrice)}원</b></span>
-                <span style={{ color: selPos.currentPrice >= chartHigh ? "#ef4444" : "#3b82f6", fontWeight: 700 }}>({selPos.currentPrice >= chartHigh ? "고점" : `${((selPos.currentPrice / chartHigh - 1) * 100).toFixed(1)}%`})</span>
+                <span style={{ fontWeight: 600 }}>현재 <b style={{ color: "#e2e8f0" }}>{dispPrice(detailCurrPrice)}</b></span>
+                <span style={{ color: detailCurrPrice >= chartHigh ? "#ef4444" : "#3b82f6", fontWeight: 700 }}>({detailCurrPrice >= chartHigh ? "고점" : `${((detailCurrPrice / chartHigh - 1) * 100).toFixed(1)}%`})</span>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {[-7, -10, -12, -15].map(pct => {
-                  const price = Math.round(chartHigh * (1 + pct / 100));
-                  const isReached = selPos.currentPrice <= price;
-                  const isExactLevel = isReached && selPos.currentPrice > (pct === -15 ? 0 : Math.round(chartHigh * (1 + ([-7,-10,-12,-15][[-7,-10,-12,-15].indexOf(pct) + 1] || -100) / 100)));
+                  const price = chartHigh * (1 + pct / 100);
+                  const isReached = detailCurrPrice <= price;
+                  const isExactLevel = isReached && detailCurrPrice > (pct === -15 ? 0 : chartHigh * (1 + ([-7,-10,-12,-15][[-7,-10,-12,-15].indexOf(pct) + 1] || -100) / 100));
                   return (
                     <div key={pct} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 11, background: isReached ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${isExactLevel ? "#ef4444" : isReached ? "rgba(239,68,68,0.3)" : "rgba(255,255,255,0.05)"}`, position: "relative" }}>
                       {isExactLevel && <span style={{ position: "absolute", top: -6, right: -4, fontSize: 8, background: "#ef4444", color: "#fff", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>도달</span>}
-                      <span style={{ color: isReached ? "#f87171" : "#64748b", fontWeight: isReached ? 700 : 500 }}>{pct}%</span> <span style={{ color: isReached ? "#f87171" : "#e2e8f0", fontWeight: 600 }}>{fmt(price)}원</span>
+                      <span style={{ color: isReached ? "#f87171" : "#64748b", fontWeight: isReached ? 700 : 500 }}>{pct}%</span> <span style={{ color: isReached ? "#f87171" : "#e2e8f0", fontWeight: 600 }}>{dispPrice(price)}</span>
                     </div>
                   );
                 })}
@@ -1202,22 +1231,22 @@ export default function Home() {
           {selPos && selPos.avgPrice > 0 && selPos.currentPrice > 0 && (
             <div style={{ ...cs, marginBottom: 8, padding: "10px 14px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 12 }}>
-                <span style={{ color: "#94a3b8", fontWeight: 600 }}>평균단가 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.avgPrice)}원</b></span>
+                <span style={{ color: "#94a3b8", fontWeight: 600 }}>평균단가 <b style={{ color: "#e2e8f0" }}>{dispPrice(detailAvgPrice)}</b></span>
                 <span style={{ color: "#475569" }}>|</span>
-                <span style={{ fontWeight: 600 }}>현재 <b style={{ color: "#e2e8f0" }}>{fmt(selPos.currentPrice)}원</b></span>
-                <span style={{ color: selPos.currentPrice >= selPos.avgPrice ? "#ef4444" : "#3b82f6", fontWeight: 700 }}>({selPos.currentPrice >= selPos.avgPrice ? "+" : ""}{((selPos.currentPrice / selPos.avgPrice - 1) * 100).toFixed(1)}%)</span>
+                <span style={{ fontWeight: 600 }}>현재 <b style={{ color: "#e2e8f0" }}>{dispPrice(detailCurrPrice)}</b></span>
+                <span style={{ color: detailCurrPrice >= detailAvgPrice ? "#ef4444" : "#3b82f6", fontWeight: 700 }}>({detailCurrPrice >= detailAvgPrice ? "+" : ""}{((detailCurrPrice / detailAvgPrice - 1) * 100).toFixed(1)}%)</span>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {[-7, -10, -12, -15].map(pct => {
-                  const price = Math.round(selPos.avgPrice * (1 + pct / 100));
-                  const isReached = selPos.currentPrice <= price;
+                  const price = detailAvgPrice * (1 + pct / 100);
+                  const isReached = detailCurrPrice <= price;
                   const levels = [-7, -10, -12, -15]; const idx = levels.indexOf(pct);
-                  const nextLevelPrice = idx < levels.length - 1 ? Math.round(selPos.avgPrice * (1 + levels[idx + 1] / 100)) : 0;
-                  const isExactLevel = isReached && selPos.currentPrice > nextLevelPrice;
+                  const nextLevelPrice = idx < levels.length - 1 ? detailAvgPrice * (1 + levels[idx + 1] / 100) : 0;
+                  const isExactLevel = isReached && detailCurrPrice > nextLevelPrice;
                   return (
                     <div key={pct} style={{ padding: "5px 12px", borderRadius: 8, fontSize: 11, background: isReached ? "rgba(59,130,246,0.12)" : "rgba(255,255,255,0.03)", border: `1px solid ${isExactLevel ? "#3b82f6" : isReached ? "rgba(59,130,246,0.3)" : "rgba(255,255,255,0.05)"}`, position: "relative" }}>
                       {isExactLevel && <span style={{ position: "absolute", top: -6, right: -4, fontSize: 8, background: "#3b82f6", color: "#fff", borderRadius: 4, padding: "1px 4px", fontWeight: 700 }}>도달</span>}
-                      <span style={{ color: isReached ? "#60a5fa" : "#64748b", fontWeight: isReached ? 700 : 500 }}>{pct}%</span> <span style={{ color: isReached ? "#60a5fa" : "#e2e8f0", fontWeight: 600 }}>{fmt(price)}원</span>
+                      <span style={{ color: isReached ? "#60a5fa" : "#64748b", fontWeight: isReached ? 700 : 500 }}>{pct}%</span> <span style={{ color: isReached ? "#60a5fa" : "#e2e8f0", fontWeight: 600 }}>{dispPrice(price)}</span>
                     </div>
                   );
                 })}
