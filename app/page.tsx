@@ -123,6 +123,7 @@ export default function Home() {
   const [priorPnlInput, setPriorPnlInput] = useState<string>("");
   const [countryFilter, setCountryFilter] = useState<"ALL" | "KR" | "US">("ALL");
   const [fxRate, setFxRate] = useState<number>(1350);
+  const [usBenchmarks, setUsBenchmarks] = useState<{ sp500: number; nasdaq: number }>({ sp500: 0, nasdaq: 0 });
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
@@ -406,6 +407,11 @@ export default function Home() {
     const currentFxRate = gRes?.usdkrw?.price || 1350;
     setFxRate(currentFxRate);
 
+    // 미국 지수 (S&P 500, NASDAQ Composite) — 키 이름이 응답마다 다를 수 있어 여러 변형 시도
+    const sp500Rate = gRes?.snp500?.changeRate ?? gRes?.sp500?.changeRate ?? gRes?.spx?.changeRate ?? gRes?.snp?.changeRate ?? 0;
+    const nasdaqRate = gRes?.nasdaq?.changeRate ?? gRes?.ndx?.changeRate ?? gRes?.ixic?.changeRate ?? gRes?.nas100?.changeRate ?? 0;
+    setUsBenchmarks({ sp500: sp500Rate, nasdaq: nasdaqRate });
+
     const priorPnl = settings?.prior_realized_pnl || 0;
     setPriorRealizedPnl(priorPnl);
     setPriorPnlInput(priorPnl ? String(priorPnl) : "");
@@ -470,6 +476,9 @@ export default function Home() {
       if (mData) setMarketIndex(mData);
       currentFxRate = gData?.usdkrw?.price || fxRate;
       setFxRate(currentFxRate);
+      const sp500Rate = gData?.snp500?.changeRate ?? gData?.sp500?.changeRate ?? gData?.spx?.changeRate ?? gData?.snp?.changeRate ?? 0;
+      const nasdaqRate = gData?.nasdaq?.changeRate ?? gData?.ndx?.changeRate ?? gData?.ixic?.changeRate ?? gData?.nas100?.changeRate ?? 0;
+      setUsBenchmarks({ sp500: sp500Rate, nasdaq: nasdaqRate });
     } catch (e) {}
     const prices: Record<string, number> = {};
     const changes: Record<string, number> = {};
@@ -503,7 +512,7 @@ export default function Home() {
     if (existing) { setForm(f => ({ ...f, instrument_id: existing.id })); setShowNewInst(false); setSearchQuery(""); setSearchResults([]); return; }
     // 검색 결과의 market 필드로 country 자동 감지
     const mu = (item.market || "").toUpperCase();
-    const detectedCountry = ["NASDAQ", "NYSE", "AMEX", "NAS", "NYS"].some(m => mu.includes(m)) ? "US" : "KR";
+    const detectedCountry = ["NASDAQ", "NYSE", "AMEX", "NAS", "NYS", "BATS", "CBOE", "ARCA", "NMS"].some(m => mu.includes(m)) ? "US" : "KR";
     const { data } = await supabase.from("instruments").insert({ symbol: item.symbol, name: item.name, market: item.market, country: detectedCountry, user_id: user.id }).select().single();
     if (data) { setInstruments(p => [...p, data]); setForm(f => ({ ...f, instrument_id: data.id })); setShowNewInst(false); setSearchQuery(""); setSearchResults([]); }
   }
@@ -879,7 +888,7 @@ export default function Home() {
                     <div style={{ marginTop: 8, paddingLeft: 46, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.05)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
-                        {(() => { const rel = (dayChanges[p.id] || 0) - (marketIndex[p.market]?.changeRate || 0); return <div style={{ fontSize: 11, color: rel >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2 }}>{p.market} 대비 {rel >= 0 ? "+" : ""}{rel.toFixed(2)}%</div>; })()}
+                        {(() => { const isUS = (p.country || "KR") === "US"; const isNas = isUS && (p.market || "").toUpperCase().includes("NASDAQ"); const benchName = isNas ? "NASDAQ" : isUS ? "S&P500" : p.market; const benchRate = isNas ? usBenchmarks.nasdaq : isUS ? usBenchmarks.sp500 : (marketIndex[p.market]?.changeRate || 0); const rel = (dayChanges[p.id] || 0) - benchRate; return <div style={{ fontSize: 11, color: rel >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2 }}>{benchName} 대비 {rel >= 0 ? "+" : ""}{rel.toFixed(2)}%</div>; })()}
                       </div>
                       <div>
                         <div style={{ fontSize: 11, color: "#b97070" }}>매수{buyCount}건</div>
@@ -914,7 +923,7 @@ export default function Home() {
                   </div>
                   <div style={{ flex: "0 0 auto", textAlign: "right", marginRight: 8 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: (dayChanges[p.id] || 0) >= 0 ? "#ef4444" : "#3b82f6", whiteSpace: "nowrap" }}>{fmt(p.currentPrice || 0)}원({(dayChanges[p.id] || 0) >= 0 ? "+" : ""}{(dayChanges[p.id] || 0).toFixed(1)}%)</div>
-                    {(() => { const rel = (dayChanges[p.id] || 0) - (marketIndex[p.market]?.changeRate || 0); return <div style={{ fontSize: 11, color: rel >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{p.market} 대비 {rel >= 0 ? "+" : ""}{rel.toFixed(2)}%</div>; })()}
+                    {(() => { const isUS = (p.country || "KR") === "US"; const isNas = isUS && (p.market || "").toUpperCase().includes("NASDAQ"); const benchName = isNas ? "NASDAQ" : isUS ? "S&P500" : p.market; const benchRate = isNas ? usBenchmarks.nasdaq : isUS ? usBenchmarks.sp500 : (marketIndex[p.market]?.changeRate || 0); const rel = (dayChanges[p.id] || 0) - benchRate; return <div style={{ fontSize: 11, color: rel >= 0 ? "#ef4444" : "#3b82f6", marginTop: 2, whiteSpace: "nowrap" }}>{benchName} 대비 {rel >= 0 ? "+" : ""}{rel.toFixed(2)}%</div>; })()}
                   </div>
                   <div style={{ flex: "0 0 auto", textAlign: "right" }}>
                     <div style={{ fontSize: 11, color: "#b97070", whiteSpace: "nowrap" }}>매수{buyCount}건</div>
