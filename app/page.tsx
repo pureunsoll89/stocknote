@@ -122,6 +122,7 @@ export default function Home() {
   const [priorRealizedPnl, setPriorRealizedPnl] = useState<number>(0);
   const [priorPnlInput, setPriorPnlInput] = useState<string>("");
   const [countryFilter, setCountryFilter] = useState<"ALL" | "KR" | "US">("ALL");
+  const [fxRate, setFxRate] = useState<number>(1350);
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
@@ -157,7 +158,12 @@ export default function Home() {
       if (cancelled) return;
       const LWC = (window as any).LightweightCharts;
 
-      const res = await fetch(`/api/chart?symbol=${symbol}&type=${chartType}&count=${chartType === "month" ? "120" : chartType === "week" ? "150" : "250"}`);
+      const inst = instruments.find(x => x.id === selInst);
+      const isUS = (inst?.country || "KR") === "US";
+      const chartUrl = isUS
+        ? `/api/global-chart?symbol=${encodeURIComponent(symbol)}&range=${chartType === "month" ? "5y" : chartType === "week" ? "2y" : "1y"}`
+        : `/api/chart?symbol=${symbol}&type=${chartType}&count=${chartType === "month" ? "120" : chartType === "week" ? "150" : "250"}`;
+      const res = await fetch(chartUrl);
       const data = await res.json();
       if (cancelled || !data.length) return;
 
@@ -364,6 +370,12 @@ export default function Home() {
     setInstruments(p => p.map(i => i.id === instId ? { ...i, memo: memoText } : i));
     setEditingMemo(null);
   }
+  async function toggleCountry(inst: Instrument) {
+    const newCountry = (inst.country || "KR") === "US" ? "KR" : "US";
+    if (!confirm(`이 종목을 ${newCountry === "US" ? "🇺🇸 미국" : "🇰🇷 한국"} 으로 변경할까요?`)) return;
+    const { error } = await supabase.from("instruments").update({ country: newCountry }).eq("id", inst.id);
+    if (!error) setInstruments(p => p.map(i => i.id === inst.id ? { ...i, country: newCountry } : i));
+  }
   async function saveTradeNote(tradeId: string) {
     await supabase.from("trades").update({ note: noteText }).eq("id", tradeId);
     setTrades(p => p.map(t => t.id === tradeId ? { ...t, note: noteText } : t));
@@ -376,18 +388,23 @@ export default function Home() {
     if (!currentUser) { setLoading(false); return; }
 
     // 모든 데이터를 한 번에 병렬로 가져오기 (이전엔 순차적으로 7개를 줄세워서 느렸음)
-    const [iRes, tRes, cRes, sRes, mRes] = await Promise.all([
+    const [iRes, tRes, cRes, sRes, mRes, gRes] = await Promise.all([
       supabase.from("instruments").select("*").eq("user_id", currentUser.id),
       supabase.from("trades").select("*").eq("user_id", currentUser.id),
       supabase.from("cash_transactions").select("*").eq("user_id", currentUser.id),
       supabase.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle(),
       fetch("/api/market-index").then(r => r.json()).catch(() => null),
+      fetch("/api/global-indicators").then(r => r.json()).catch(() => null),
     ]);
     const i = iRes.data;
     const t = tRes.data;
     const c = cRes.data;
     const settings = sRes.data;
     if (mRes) setMarketIndex(mRes);
+
+    // USD/KRW 환율 (미국 주식 가격 원화 환산용)
+    const currentFxRate = gRes?.usdkrw?.price || 1350;
+    setFxRate(currentFxRate);
 
     const priorPnl = settings?.prior_realized_pnl || 0;
     setPriorRealizedPnl(priorPnl);
@@ -426,11 +443,13 @@ export default function Home() {
     if (i && i.length > 0) {
       const prices: Record<string, number> = {};
       const changes: Record<string, number> = {};
-      await Promise.all(i.map(async (inst) => {
+      await Promise.all(i.map(async (inst: any) => {
         try {
-          const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
+          const isUS = (inst.country || "KR") === "US";
+          const url = isUS ? `/api/us-stock-price?symbol=${inst.symbol}` : `/api/stock-price?symbol=${inst.symbol}`;
+          const res = await fetch(url);
           const data = await res.json();
-          if (data.price) prices[inst.id] = data.price;
+          if (data.price) prices[inst.id] = isUS ? Math.round(data.price * currentFxRate) : data.price;
           if (data.changeRate !== undefined) changes[inst.id] = data.changeRate;
         } catch (e) {}
       }));
@@ -442,14 +461,24 @@ export default function Home() {
   async function refreshPrices() {
     if (instruments.length === 0) return;
     setPriceLoading(true);
-    try { const mRes = await fetch("/api/market-index"); const mData = await mRes.json(); setMarketIndex(mData); } catch (e) {}
+    try {
+      const [mData, gData] = await Promise.all([
+        fetch("/api/market-index").then(r => r.json()).catch(() => null),
+        fetch("/api/global-indicators").then(r => r.json()).catch(() => null),
+      ]);
+      if (mData) setMarketIndex(mData);
+      var currentFxRate = gData?.usdkrw?.price || fxRate;
+      setFxRate(currentFxRate);
+    } catch (e) { var currentFxRate = fxRate; }
     const prices: Record<string, number> = {};
     const changes: Record<string, number> = {};
-    await Promise.all(instruments.map(async (inst) => {
+    await Promise.all(instruments.map(async (inst: any) => {
       try {
-        const res = await fetch(`/api/stock-price?symbol=${inst.symbol}`);
+        const isUS = (inst.country || "KR") === "US";
+        const url = isUS ? `/api/us-stock-price?symbol=${inst.symbol}` : `/api/stock-price?symbol=${inst.symbol}`;
+        const res = await fetch(url);
         const data = await res.json();
-        if (data.price) prices[inst.id] = data.price;
+        if (data.price) prices[inst.id] = isUS ? Math.round(data.price * currentFxRate) : data.price;
         if (data.changeRate !== undefined) changes[inst.id] = data.changeRate;
       } catch (e) {}
     }));
@@ -471,7 +500,10 @@ export default function Home() {
   async function selectStock(item: any) {
     const existing = instruments.find(i => i.symbol === item.symbol);
     if (existing) { setForm(f => ({ ...f, instrument_id: existing.id })); setShowNewInst(false); setSearchQuery(""); setSearchResults([]); return; }
-    const { data } = await supabase.from("instruments").insert({ symbol: item.symbol, name: item.name, market: item.market, user_id: user.id }).select().single();
+    // 검색 결과의 market 필드로 country 자동 감지
+    const mu = (item.market || "").toUpperCase();
+    const detectedCountry = ["NASDAQ", "NYSE", "AMEX", "NAS", "NYS"].some(m => mu.includes(m)) ? "US" : "KR";
+    const { data } = await supabase.from("instruments").insert({ symbol: item.symbol, name: item.name, market: item.market, country: detectedCountry, user_id: user.id }).select().single();
     if (data) { setInstruments(p => [...p, data]); setForm(f => ({ ...f, instrument_id: data.id })); setShowNewInst(false); setSearchQuery(""); setSearchResults([]); }
   }
 
@@ -1084,7 +1116,11 @@ export default function Home() {
                 </div>
                 <div>
                   <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 2 }}>{selInstData.name}</div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>{selInstData.symbol} · {selInstData.market}</div>
+                  <div style={{ fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
+                    <span>{selInstData.symbol} · {selInstData.market}</span>
+                    <span style={{ marginLeft: 4 }}>{(selInstData.country || "KR") === "US" ? "🇺🇸" : "🇰🇷"}</span>
+                    <button onClick={() => toggleCountry(selInstData)} style={{ background: "none", border: "1px solid rgba(255,255,255,0.08)", color: "#64748b", fontSize: 10, padding: "1px 6px", borderRadius: 4, cursor: "pointer", marginLeft: 2 }}>국가변경</button>
+                  </div>
                 </div>
               </div>
               {selPos && (
