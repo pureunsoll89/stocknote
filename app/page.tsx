@@ -123,6 +123,7 @@ export default function Home() {
   const [priorPnlInput, setPriorPnlInput] = useState<string>("");
   const [countryFilter, setCountryFilter] = useState<"ALL" | "KR" | "US">("ALL");
   const [fxRate, setFxRate] = useState<number>(1350);
+  const [fxChangeRate, setFxChangeRate] = useState<number>(0);
   const [usBenchmarks, setUsBenchmarks] = useState<{ sp500: number; nasdaq: number }>({ sp500: 0, nasdaq: 0 });
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
@@ -406,6 +407,7 @@ export default function Home() {
     // USD/KRW 환율 (미국 주식 가격 원화 환산용)
     const currentFxRate = gRes?.usdkrw?.price || 1350;
     setFxRate(currentFxRate);
+    setFxChangeRate(gRes?.usdkrw?.changeRate || 0);
 
     // 미국 지수 (S&P 500, NASDAQ Composite) — 키 이름이 응답마다 다를 수 있어 여러 변형 시도
     const sp500Rate = gRes?.snp500?.changeRate ?? gRes?.sp500?.changeRate ?? gRes?.spx?.changeRate ?? gRes?.snp?.changeRate ?? 0;
@@ -476,6 +478,7 @@ export default function Home() {
       if (mData) setMarketIndex(mData);
       currentFxRate = gData?.usdkrw?.price || fxRate;
       setFxRate(currentFxRate);
+      setFxChangeRate(gData?.usdkrw?.changeRate || 0);
       const sp500Rate = gData?.snp500?.changeRate ?? gData?.sp500?.changeRate ?? gData?.spx?.changeRate ?? gData?.snp?.changeRate ?? 0;
       const nasdaqRate = gData?.nasdaq?.changeRate ?? gData?.ndx?.changeRate ?? gData?.ixic?.changeRate ?? gData?.nas100?.changeRate ?? 0;
       setUsBenchmarks({ sp500: sp500Rate, nasdaq: nasdaqRate });
@@ -765,18 +768,32 @@ export default function Home() {
         {view === "dashboard" && <div>
 
           {/* Market Index Bar */}
-          {(marketIndex["KOSPI"] || marketIndex["KOSDAQ"]) && (
-            <div style={{ display: "flex", gap: 12, marginBottom: 12, padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
-              {["KOSPI", "KOSDAQ"].map(key => {
-                const idx = marketIndex[key]; if (!idx) return null;
-                const isUp = idx.changeRate >= 0;
+          {(marketIndex["KOSPI"] || marketIndex["KOSDAQ"] || usBenchmarks.sp500 || usBenchmarks.nasdaq || fxRate > 0) && (
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 12, padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}>
+              {([
+                { name: "KOSPI", rate: marketIndex["KOSPI"]?.changeRate },
+                { name: "KOSDAQ", rate: marketIndex["KOSDAQ"]?.changeRate },
+                { name: "S&P500", rate: usBenchmarks.sp500 || undefined },
+                { name: "NASDAQ", rate: usBenchmarks.nasdaq || undefined },
+              ] as const).filter(x => x.rate !== undefined).map(({ name, rate }) => {
+                const r = rate as number;
+                const isUp = r >= 0;
                 return (
-                  <div key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{key}</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: isUp ? "#ef4444" : "#3b82f6" }}>{isUp ? "▲" : "▼"} {isUp ? "+" : ""}{idx.changeRate.toFixed(2)}%</span>
+                  <div key={name} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>{name}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: isUp ? "#ef4444" : "#3b82f6" }}>{isUp ? "▲" : "▼"}{Math.abs(r).toFixed(2)}%</span>
                   </div>
                 );
               })}
+              {fxRate > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600 }}>USD/KRW</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9" }}>{fmt(Math.round(fxRate))}</span>
+                  {fxChangeRate !== 0 && (
+                    <span style={{ fontSize: 11, fontWeight: 700, color: fxChangeRate >= 0 ? "#ef4444" : "#3b82f6" }}>{fxChangeRate >= 0 ? "▲" : "▼"}{Math.abs(fxChangeRate).toFixed(2)}%</span>
+                  )}
+                </div>
+              )}
               <button onClick={refreshPrices} disabled={priceLoading} style={{ marginLeft: "auto", background: "none", border: "none", color: "#64748b", fontSize: 11, cursor: "pointer", padding: 0 }}>{priceLoading ? "갱신중..." : "🔄"}</button>
             </div>
           )}
