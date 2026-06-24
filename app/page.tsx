@@ -11,6 +11,21 @@ const supabase = createClient(
 interface Instrument { id: string; symbol: string; name: string; market: string; country?: string; memo?: string; }
 interface Trade { id: string; instrument_id: string; trade_date: string; side: string; quantity: number; price: number; fee: number; note: string; }
 interface CashTxn { id: string; txn_date: string; type: string; amount: number; note: string; }
+interface JournalEntry { id: string; entry_at: string; content: string; emotion_tags: string[]; market_tag: string | null; market_snapshot: any; }
+
+const EMOTION_TAGS = ["공포", "욕심", "FOMO", "평정", "후회", "만족", "불안", "확신"];
+const MARKET_TAGS = [
+  { key: "BULL", label: "상승장", emoji: "📈" },
+  { key: "BEAR", label: "하락장", emoji: "📉" },
+  { key: "VOLATILE", label: "변동", emoji: "〽️" },
+  { key: "SIDEWAYS", label: "횡보", emoji: "➡️" },
+];
+
+function journalNowLocal(): string {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
 
 // ─────────── Helpers ───────────
 function isETFName(name: string) {
@@ -126,6 +141,9 @@ export default function Home() {
   const [fxChangeRate, setFxChangeRate] = useState<number>(0);
   const [usBenchmarks, setUsBenchmarks] = useState<{ sp500: number; nasdaq: number }>({ sp500: 0, nasdaq: 0 });
   const [usdPrices, setUsdPrices] = useState<Record<string, number>>({});
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
+  const [journalDraft, setJournalDraft] = useState<{ entry_at: string; content: string; emotion_tags: string[]; market_tag: string }>({ entry_at: "", content: "", emotion_tags: [], market_tag: "" });
+  const [editingJournalId, setEditingJournalId] = useState<string | null>(null);
   const [tradesViewMode, setTradesViewMode] = useState<"date"|"stock">("date");
   const [expandedStocks, setExpandedStocks] = useState<Set<string>>(new Set());
   const [chartType, setChartType] = useState<"day"|"week"|"month">("day");
@@ -240,6 +258,7 @@ export default function Home() {
       else if (hash === "#cash") { setView("cash"); setSelInst(null); }
       else if (hash === "#allocation") { setView("allocation"); setSelInst(null); }
       else if (hash === "#global") { setView("global"); setSelInst(null); }
+      else if (hash === "#journal") { setView("journal"); setSelInst(null); }
       else { setView("dashboard"); setSelInst(null); }
     };
     window.addEventListener("popstate", handlePop);
@@ -273,6 +292,12 @@ export default function Home() {
   useEffect(() => {
     if (view === "global") { fetch("/api/global-indicators").then(r => r.json()).then(d => setGlobalData(d)).catch(() => {}); }
   }, [view]);
+
+  useEffect(() => {
+    if (view === "journal" && !journalDraft.entry_at && !editingJournalId) {
+      setJournalDraft(d => ({ ...d, entry_at: journalNowLocal() }));
+    }
+  }, [view, editingJournalId, journalDraft.entry_at]);
 
   useEffect(() => {
     if (!globalChartRef.current || !globalSel || !globalData[globalSel]) return;
@@ -379,6 +404,60 @@ export default function Home() {
     const { error } = await supabase.from("instruments").update({ country: newCountry }).eq("id", inst.id);
     if (!error) setInstruments(p => p.map(i => i.id === inst.id ? { ...i, country: newCountry } : i));
   }
+
+  async function saveJournalEntry() {
+    if (!journalDraft.content.trim() || !user) return;
+    const snapshot = {
+      kospi: marketIndex["KOSPI"]?.changeRate ?? null,
+      kosdaq: marketIndex["KOSDAQ"]?.changeRate ?? null,
+      sp500: usBenchmarks.sp500 || null,
+      nasdaq: usBenchmarks.nasdaq || null,
+      usdkrw_price: fxRate || null,
+      usdkrw_change: fxChangeRate || null,
+    };
+    const entryAtIso = new Date(journalDraft.entry_at || journalNowLocal()).toISOString();
+    if (editingJournalId) {
+      await supabase.from("journal_entries").update({
+        entry_at: entryAtIso,
+        content: journalDraft.content,
+        emotion_tags: journalDraft.emotion_tags,
+        market_tag: journalDraft.market_tag || null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", editingJournalId);
+      setEditingJournalId(null);
+    } else {
+      await supabase.from("journal_entries").insert({
+        user_id: user.id,
+        entry_at: entryAtIso,
+        content: journalDraft.content,
+        emotion_tags: journalDraft.emotion_tags,
+        market_tag: journalDraft.market_tag || null,
+        market_snapshot: snapshot,
+      });
+    }
+    setJournalDraft({ entry_at: journalNowLocal(), content: "", emotion_tags: [], market_tag: "" });
+    const { data } = await supabase.from("journal_entries").select("*").eq("user_id", user.id).order("entry_at", { ascending: false });
+    setJournalEntries(data || []);
+  }
+
+  async function deleteJournalEntry(id: string) {
+    if (!confirm("일기를 삭제하시겠습니까?")) return;
+    await supabase.from("journal_entries").delete().eq("id", id);
+    setJournalEntries(p => p.filter(j => j.id !== id));
+  }
+
+  function editJournalEntry(entry: JournalEntry) {
+    setEditingJournalId(entry.id);
+    const t = new Date(entry.entry_at);
+    t.setMinutes(t.getMinutes() - t.getTimezoneOffset());
+    setJournalDraft({
+      entry_at: t.toISOString().slice(0, 16),
+      content: entry.content,
+      emotion_tags: entry.emotion_tags || [],
+      market_tag: entry.market_tag || "",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   async function saveTradeNote(tradeId: string) {
     await supabase.from("trades").update({ note: noteText }).eq("id", tradeId);
     setTrades(p => p.map(t => t.id === tradeId ? { ...t, note: noteText } : t));
@@ -391,19 +470,21 @@ export default function Home() {
     if (!currentUser) { setLoading(false); return; }
 
     // 모든 데이터를 한 번에 병렬로 가져오기 (이전엔 순차적으로 7개를 줄세워서 느렸음)
-    const [iRes, tRes, cRes, sRes, mRes, gRes] = await Promise.all([
+    const [iRes, tRes, cRes, sRes, mRes, gRes, jRes] = await Promise.all([
       supabase.from("instruments").select("*").eq("user_id", currentUser.id),
       supabase.from("trades").select("*").eq("user_id", currentUser.id),
       supabase.from("cash_transactions").select("*").eq("user_id", currentUser.id),
       supabase.from("user_settings").select("*").eq("user_id", currentUser.id).maybeSingle(),
       fetch("/api/market-index").then(r => r.json()).catch(() => null),
       fetch("/api/global-indicators").then(r => r.json()).catch(() => null),
+      supabase.from("journal_entries").select("*").eq("user_id", currentUser.id).order("entry_at", { ascending: false }),
     ]);
     const i = iRes.data;
     const t = tRes.data;
     const c = cRes.data;
     const settings = sRes.data;
     if (mRes) setMarketIndex(mRes);
+    setJournalEntries(jRes.data || []);
 
     // USD/KRW 환율 (미국 주식 가격 원화 환산용)
     const currentFxRate = gRes?.usdkrw?.price || 1350;
@@ -756,7 +837,7 @@ export default function Home() {
         )}
         {view !== "detail" && (
           <div className="navscroll" style={{ display: "flex", gap: 2, background: "rgba(255,255,255,0.04)", borderRadius: 8, padding: 2, overflowX: "auto", minWidth: 0 }}>
-            {[{ k: "dashboard", l: "보유현황" }, { k: "allocation", l: "비중" }, { k: "cash", l: "현금" }, { k: "trades", l: "거래내역" }, { k: "global", l: "국제지표" }, { k: "add", l: "+ 기록" }].map(t => (
+            {[{ k: "dashboard", l: "보유현황" }, { k: "allocation", l: "비중" }, { k: "cash", l: "현금" }, { k: "trades", l: "거래내역" }, { k: "journal", l: "📝 일기" }, { k: "global", l: "국제지표" }, { k: "add", l: "+ 기록" }].map(t => (
               <button key={t.k} onClick={() => navigateTo(t.k)} style={{ padding: "6px 9px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: view === t.k ? 700 : 500, background: view === t.k ? "rgba(255,255,255,0.08)" : "transparent", color: view === t.k ? "#f1f5f9" : "#64748b", whiteSpace: "nowrap", flex: "0 0 auto" }}>{t.l}</button>
             ))}
           </div>
@@ -1653,6 +1734,137 @@ export default function Home() {
               </div>
             )}
           </>)}
+        </div>}
+
+        {/* ============ JOURNAL (주식 일기) ============ */}
+        {view === "journal" && <div>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>주식 일기</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>장 분위기와 나의 대응을 시간대별로 기록</div>
+          </div>
+
+          {/* 작성 폼 */}
+          <div style={{ ...cs, padding: 14, marginBottom: 16 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <input
+                type="datetime-local"
+                value={journalDraft.entry_at}
+                onChange={(e: any) => setJournalDraft(d => ({ ...d, entry_at: e.target.value }))}
+                style={{ ...is, flex: 1 }}
+              />
+              <button onClick={() => setJournalDraft(d => ({ ...d, entry_at: journalNowLocal() }))} style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#64748b", fontSize: 11, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>지금</button>
+            </div>
+
+            {/* 시장 상황 (단일 선택) */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+              {MARKET_TAGS.map(({ key, label, emoji }) => (
+                <button
+                  key={key}
+                  onClick={() => setJournalDraft(d => ({ ...d, market_tag: d.market_tag === key ? "" : key }))}
+                  style={{ flex: 1, padding: "8px 4px", borderRadius: 6, border: journalDraft.market_tag === key ? "1px solid #3b82f6" : "1px solid rgba(255,255,255,0.08)", background: journalDraft.market_tag === key ? "rgba(59,130,246,0.15)" : "rgba(255,255,255,0.03)", color: journalDraft.market_tag === key ? "#60a5fa" : "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                >
+                  {emoji} {label}
+                </button>
+              ))}
+            </div>
+
+            {/* 감정 태그 (다중 선택) */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginBottom: 10 }}>
+              {EMOTION_TAGS.map(tag => {
+                const selected = journalDraft.emotion_tags.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => setJournalDraft(d => ({ ...d, emotion_tags: selected ? d.emotion_tags.filter(t => t !== tag) : [...d.emotion_tags, tag] }))}
+                    style={{ padding: "5px 11px", borderRadius: 12, border: selected ? "1px solid #f59e0b" : "1px solid rgba(255,255,255,0.08)", background: selected ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.03)", color: selected ? "#fbbf24" : "#94a3b8", fontSize: 11, fontWeight: 600, cursor: "pointer" }}
+                  >
+                    {tag}
+                  </button>
+                );
+              })}
+            </div>
+
+            <textarea
+              placeholder="오늘 시장에 대한 내 생각과 대응을 자유롭게..."
+              value={journalDraft.content}
+              onChange={(e: any) => setJournalDraft(d => ({ ...d, content: e.target.value }))}
+              style={{ width: "100%", minHeight: 90, padding: 10, borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.02)", color: "#e2e8f0", fontSize: 13, resize: "vertical", marginBottom: 10, fontFamily: "inherit", boxSizing: "border-box" }}
+            />
+
+            <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+              {editingJournalId && (
+                <button onClick={() => { setEditingJournalId(null); setJournalDraft({ entry_at: journalNowLocal(), content: "", emotion_tags: [], market_tag: "" }); }} style={{ padding: "8px 14px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.08)", background: "transparent", color: "#94a3b8", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>취소</button>
+              )}
+              <button onClick={saveJournalEntry} disabled={!journalDraft.content.trim()} style={{ padding: "8px 18px", borderRadius: 6, border: "none", background: journalDraft.content.trim() ? "linear-gradient(135deg,#3b82f6,#7c3aed)" : "rgba(255,255,255,0.05)", color: journalDraft.content.trim() ? "#fff" : "#475569", fontSize: 12, fontWeight: 700, cursor: journalDraft.content.trim() ? "pointer" : "not-allowed" }}>
+                {editingJournalId ? "수정" : "저장"}
+              </button>
+            </div>
+          </div>
+
+          {/* 일기 리스트 (날짜별 그룹핑) */}
+          {journalEntries.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "#64748b", fontSize: 13 }}>
+              아직 일기가 없어요. 첫 일기를 작성해보세요.
+            </div>
+          ) : (() => {
+            const groups: Record<string, JournalEntry[]> = {};
+            journalEntries.forEach(e => {
+              const dateKey = e.entry_at.slice(0, 10);
+              if (!groups[dateKey]) groups[dateKey] = [];
+              groups[dateKey].push(e);
+            });
+            const sortedDates = Object.keys(groups).sort().reverse();
+            const wDays = ["일", "월", "화", "수", "목", "금", "토"];
+
+            return sortedDates.map(dateKey => {
+              const dayEntries = groups[dateKey];
+              const firstSnap = dayEntries.find(e => e.market_snapshot)?.market_snapshot;
+              const d = new Date(dateKey + "T00:00:00");
+              const dateLabel = `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${wDays[d.getDay()]})`;
+
+              return (
+                <div key={dateKey} style={{ marginBottom: 18 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, paddingBottom: 6, borderBottom: "1px solid rgba(255,255,255,0.06)", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#e2e8f0" }}>{dateLabel}</div>
+                    {firstSnap && (
+                      <div style={{ display: "flex", gap: 8, fontSize: 11, color: "#64748b", flexWrap: "wrap" }}>
+                        {firstSnap.kospi !== null && firstSnap.kospi !== undefined && <span style={{ color: firstSnap.kospi >= 0 ? "#ef4444" : "#3b82f6" }}>KOSPI {firstSnap.kospi >= 0 ? "+" : ""}{firstSnap.kospi.toFixed(2)}%</span>}
+                        {firstSnap.sp500 !== null && firstSnap.sp500 !== undefined && firstSnap.sp500 !== 0 && <span style={{ color: firstSnap.sp500 >= 0 ? "#ef4444" : "#3b82f6" }}>S&P {firstSnap.sp500 >= 0 ? "+" : ""}{firstSnap.sp500.toFixed(2)}%</span>}
+                        {firstSnap.nasdaq !== null && firstSnap.nasdaq !== undefined && firstSnap.nasdaq !== 0 && <span style={{ color: firstSnap.nasdaq >= 0 ? "#ef4444" : "#3b82f6" }}>NAS {firstSnap.nasdaq >= 0 ? "+" : ""}{firstSnap.nasdaq.toFixed(2)}%</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  {dayEntries.map(entry => {
+                    const t = new Date(entry.entry_at);
+                    const timeStr = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+                    const mTag = MARKET_TAGS.find(m => m.key === entry.market_tag);
+
+                    return (
+                      <div key={entry.id} style={{ ...cs, padding: 12, marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>{timeStr}</span>
+                          {mTag && <span style={{ fontSize: 11, color: "#60a5fa", fontWeight: 600 }}>{mTag.emoji} {mTag.label}</span>}
+                          {entry.emotion_tags && entry.emotion_tags.length > 0 && (
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {entry.emotion_tags.map(tag => (
+                                <span key={tag} style={{ fontSize: 10, padding: "1px 7px", borderRadius: 8, background: "rgba(245,158,11,0.15)", color: "#fbbf24", fontWeight: 600 }}>{tag}</span>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                            <button onClick={() => editJournalEntry(entry)} style={{ background: "none", border: "none", color: "#64748b", fontSize: 11, cursor: "pointer", padding: 2 }}>수정</button>
+                            <button onClick={() => deleteJournalEntry(entry.id)} style={{ background: "none", border: "none", color: "#64748b", fontSize: 11, cursor: "pointer", padding: 2 }}>삭제</button>
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 13, color: "#e2e8f0", whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{entry.content}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            });
+          })()}
         </div>}
 
         {/* ============ ADD TRADE ============ */}
